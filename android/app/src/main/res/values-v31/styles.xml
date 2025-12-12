@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 
+      Theme for Android 12+.
+      This theme is responsible for the "double splash screen" issue.
+    -->
+    <style name="LaunchTheme" parent="@android:style/Theme.Light.NoTitleBar">
+        <!-- The window background is our solid splash color -->
+        <item name="android:windowBackground">@color/splash_background_color</item>
+
+        <!-- This is the most important part. It removes the icon from the splash screen. -->
+        <item name="android:windowSplashScreenAnimatedIcon">@null</item>
+        <item name="android:windowSplashScreenBrandingImage">@null</item>
+    </style>
+</resources>

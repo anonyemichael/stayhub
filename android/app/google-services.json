@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "project_number": "33041190550",
+    "project_id": "device-streaming-d7021871",
+    "storage_bucket": "device-streaming-d7021871.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:33041190550:android:77641061ef371a3d963cb7",
+        "android_client_info": {
+          "package_name": "com.example.stayhub.stayhub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "33041190550-vt1mjs5b97f66auv4u7vgl1pk9ntr21j.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.stayhub.stayhub",
+            "certificate_hash": "8cfefaff36a5c710d40dee65b2065cfc2ec86531"
+          }
+        },
+        {
+          "client_id": "33041190550-pa4rcbsoac2b4irda7g0lonl5rpnpuef.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyC-4FI84mCzrlhXBU-dxDFrz02TOyGU_Iw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "33041190550-pa4rcbsoac2b4irda7g0lonl5rpnpuef.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "33041190550-ko6f8duu712tqbpkmeuv3vo5o6e8ilel.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.stayhub.stayhub"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
