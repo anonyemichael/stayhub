@@ -7,8 +7,34 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
 
-class ClipsPage extends StatelessWidget {
-  const ClipsPage({super.key});
+class ClipsPage extends StatefulWidget {
+  final bool isActive;
+  const ClipsPage({super.key, this.isActive = true});
+
+  @override
+  State<ClipsPage> createState() => _ClipsPageState();
+}
+
+class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  // --- LIFECYCLE FOR APP PAUSE/RESUME ---
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // We don't have direct access to child controllers here easily without a global state or provider.
+    // However, the `VideoPlayerWidget` below can handle its own lifecycle if we rebuild it.
+    // A simpler way for the "switching tabs" issue is handled by the `isActive` property.
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,10 +73,25 @@ class ClipsPage extends StatelessWidget {
             itemBuilder: (context, index) {
               final doc = videoDocs[index];
               final videoData = doc.data() as Map<String, dynamic>;
-              // Inject ID for updates
               final dataWithId = Map<String, dynamic>.from(videoData);
               dataWithId['id'] = doc.id;
-              return VideoPlayerWidget(video: dataWithId);
+              
+              // Pass the 'isActive' flag down. 
+              // BUT: In a PageView, previous/next pages are active in memory but not visible.
+              // We should really only play if this specific page is visible AND the main tab is active.
+              // For simplicity: The PageView keeps state. We can use a VisibilityDetector in the child
+              // or let the child manage play/pause based on `isActive`.
+              
+              // Here we pass `shouldPlay`. Ideally, we only want the CURRENT index to play.
+              // But PageView builder builds adjacent pages too.
+              // Since we don't have the current index in state here easily without a PageController listener,
+              // we will rely on the `VideoPlayerWidget` to auto-play when initialized, 
+              // AND we will force pause if `widget.isActive` is false.
+              
+              return VideoPlayerWidget(
+                video: dataWithId, 
+                shouldPlay: widget.isActive, 
+              );
             },
           );
         },
@@ -61,14 +102,15 @@ class ClipsPage extends StatelessWidget {
 
 class VideoPlayerWidget extends StatefulWidget {
   final Map<String, dynamic> video;
+  final bool shouldPlay; // New parameter
 
-  const VideoPlayerWidget({super.key, required this.video});
+  const VideoPlayerWidget({super.key, required this.video, required this.shouldPlay});
 
   @override
   State<VideoPlayerWidget> createState() => _VideoPlayerWidgetState();
 }
 
-class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
+class _VideoPlayerWidgetState extends State<VideoPlayerWidget> with RouteAware {
   VideoPlayerController? _controller;
   bool _isLoading = true;
   bool _isPlaying = true;
@@ -80,6 +122,19 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   void initState() {
     super.initState();
     _initializeVideo();
+  }
+
+  @override
+  void didUpdateWidget(VideoPlayerWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the parent says "stop playing" (tab switched), we pause.
+    if (oldWidget.shouldPlay != widget.shouldPlay) {
+      if (widget.shouldPlay) {
+        _controller?.play();
+      } else {
+        _controller?.pause();
+      }
+    }
   }
 
   void _initializeVideo() async {
@@ -94,11 +149,16 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     try {
       await _controller!.initialize();
       await _controller!.setLooping(true);
-      await _controller!.play();
+      
+      // Only auto-play if the tab is active
+      if (widget.shouldPlay) {
+        await _controller!.play();
+      }
+      
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _isPlaying = true;
+          _isPlaying = widget.shouldPlay;
         });
       }
     } catch (e) {
@@ -166,11 +226,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
     final location = widget.video['location'] as String?;
     if (location == null) return;
 
-    // Try to find the hostel by name/location
-    // In a real app, 'hostelId' should be on the clip document.
-    // Here we try to find it by matching the 'location' field which in our seeder matches the hostel name sometimes.
-    // Actually, seeder puts 'location': 'Sunshine Residency' which is the NAME of the hostel.
-    
     final doc = await _firestoreService.findHostelByName(location);
     
     if (doc != null && mounted) {
@@ -277,7 +332,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
                 onTap: _showComments
               ),
               const SizedBox(height: 20),
-              // REMOVED SHARE BUTTON
             ],
           ),
         ),
@@ -406,8 +460,6 @@ class _CommentsBottomSheetState extends State<_CommentsBottomSheet> {
     _commentController.clear();
     FocusScope.of(context).unfocus();
 
-    // Fetch minimal user details for the comment
-    // Ideally stored in Auth user profile or fetched once
     String name = "User";
     String? photo;
     

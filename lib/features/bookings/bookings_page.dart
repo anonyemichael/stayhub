@@ -3,6 +3,7 @@ import 'dart:ui'; // For Glassmorphism
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/services/firestore_service.dart';
+import 'package:stayhub/features/bookings/booking_details_page.dart';
 
 // 1. DATA MODEL
 class Booking {
@@ -82,7 +83,6 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
       ),
       body: Stack(
         children: [
-          // 1. ATMOSPHERE BACKGROUND
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -94,13 +94,11 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
               ),
             ),
           ),
-
-          // 2. MAIN CONTENT
           SafeArea(
             child: user == null
                 ? Center(
                     child: Text("Please log in to view bookings",
-                        style: TextStyle(color: theme.textTheme.bodyLarge?.color?.withValues(alpha: 0.7))))
+                        style: TextStyle(color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7))))
                 : StreamBuilder<QuerySnapshot>(
                     stream: _firestoreService.getUserBookings(user.uid),
                     builder: (context, snapshot) {
@@ -118,13 +116,8 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
                       return Column(
                         children: [
                           const SizedBox(height: 10),
-
-                          // --- CUSTOM FLOATING TABS ---
                           _buildSegmentedTab(isDark),
-
                           const SizedBox(height: 20),
-
-                          // --- TAB VIEW ---
                           Expanded(
                             child: TabBarView(
                               controller: _tabController,
@@ -144,10 +137,6 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // BUILDERS & HELPERS
-  // ---------------------------------------------------------------------------
-
   Widget _buildSegmentedTab(bool isDark) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 20),
@@ -162,17 +151,12 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
         indicator: BoxDecoration(
           color: isDark ? Colors.white : Colors.black,
           borderRadius: BorderRadius.circular(25),
-          boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 4, offset: const Offset(0, 2))],
         ),
         labelColor: isDark ? Colors.black : Colors.white,
         unselectedLabelColor: isDark ? Colors.white60 : Colors.grey[600],
         labelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-        tabs: const [
-          Tab(text: 'Upcoming'),
-          Tab(text: 'History'),
-        ],
+        tabs: const [Tab(text: 'Upcoming'), Tab(text: 'History')],
       ),
     );
   }
@@ -189,17 +173,13 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
           children: [
             Icon(Icons.confirmation_number_outlined, size: 80, color: isDark ? Colors.white.withValues(alpha: 0.2) : Colors.grey[300]),
             const SizedBox(height: 16),
-            Text(
-              "No $type bookings found",
-              style: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.5) : Colors.grey[500], fontSize: 16),
-            ),
+            Text("No $type bookings found", style: TextStyle(color: isDark ? Colors.white.withValues(alpha: 0.5) : Colors.grey[500], fontSize: 16)),
           ],
         ),
       );
     }
 
     return ListView.builder(
-      // Padding at bottom for Floating Nav Bar
       padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 100),
       itemCount: filtered.length,
       itemBuilder: (context, index) {
@@ -209,9 +189,6 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
   }
 }
 
-// ---------------------------------------------------------------------------
-// THE MAGIC "TICKET" CARD COMPONENT
-// ---------------------------------------------------------------------------
 class TicketCard extends StatelessWidget {
   final Booking booking;
 
@@ -230,20 +207,12 @@ class TicketCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: cardColor,
         borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.1), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Column(
         children: [
-          // --- TOP SECTION: IMAGE & STATUS ---
           Stack(
             children: [
-              // Image
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                 child: Image.network(
@@ -251,29 +220,10 @@ class TicketCard extends StatelessWidget {
                   height: 150,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) {
-                    return Container(
-                      height: 150,
-                      color: isDark ? Colors.grey[800] : Colors.grey[300],
-                      child: const Center(child: Icon(Icons.broken_image, color: Colors.grey)),
-                    );
-                  },
+                  errorBuilder: (context, error, stackTrace) => Container(height: 150, color: isDark ? Colors.grey[800] : Colors.grey[300], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                 ),
               ),
-              // Dark Gradient Overlay for readability
-              Positioned.fill(
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                    gradient: LinearGradient(
-                      colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.center,
-                    ),
-                  ),
-                ),
-              ),
-              // Status Badge (Glassmorphism)
+              Positioned.fill(child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(top: Radius.circular(24)), gradient: LinearGradient(colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent], begin: Alignment.bottomCenter, end: Alignment.center)))),
               Positioned(
                 top: 16,
                 right: 16,
@@ -283,82 +233,39 @@ class TicketCard extends StatelessWidget {
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      color: isUpcoming
-                          ? Colors.green.withValues(alpha: 0.3)
-                          : Colors.grey.withValues(alpha: 0.3),
+                      color: isUpcoming ? Colors.green.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.3),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                              isUpcoming ? Icons.check_circle : Icons.history,
-                              color: Colors.white, size: 14
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            booking.status,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
+                        children: [Icon(isUpcoming ? Icons.check_circle : Icons.history, color: Colors.white, size: 14), const SizedBox(width: 6), Text(booking.status, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))],
                       ),
                     ),
                   ),
                 ),
               ),
-              // Hostel Name Over Image
               Positioned(
                 bottom: 16,
                 left: 16,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      booking.hostelName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        shadows: [Shadow(color: Colors.black54, blurRadius: 10)],
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        const Icon(Icons.location_on, color: Colors.white70, size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          booking.location,
-                          style: const TextStyle(color: Colors.white70, fontSize: 13),
-                        ),
-                      ],
-                    ),
+                    Text(booking.hostelName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black54, blurRadius: 10)])),
+                    Row(children: [const Icon(Icons.location_on, color: Colors.white70, size: 14), const SizedBox(width: 4), Text(booking.location, style: const TextStyle(color: Colors.white70, fontSize: 13))]),
                   ],
                 ),
               ),
             ],
           ),
-
-          // --- BOTTOM SECTION: DETAILS & ACTION ---
           Padding(
             padding: const EdgeInsets.all(20),
             child: Column(
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    _buildDateColumn("Check In", booking.checkIn, textColor),
-                    // Dashed Line / Arrow
-                    Icon(Icons.arrow_forward, color: isDark ? Colors.grey[600] : Colors.grey[300]),
-                    _buildDateColumn("Check Out", booking.checkOut, textColor),
-                  ],
+                  children: [_buildDateColumn("Check In", booking.checkIn, textColor), Icon(Icons.arrow_forward, color: isDark ? Colors.grey[600] : Colors.grey[300]), _buildDateColumn("Check Out", booking.checkOut, textColor)],
                 ),
-
                 const SizedBox(height: 20),
                 Divider(height: 1, color: isDark ? Colors.white12 : Colors.black12),
                 const SizedBox(height: 20),
-
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -367,37 +274,17 @@ class TicketCard extends StatelessWidget {
                       children: [
                         Text("Total Price", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
                         const SizedBox(height: 4),
-                        Text(
-                            "GHS ${booking.price.toStringAsFixed(0)}",
-                            style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w900,
-                                color: isDark ? Colors.blue[200] : Colors.blue.shade900
-                            )
-                        ),
+                        Text("GHS ${booking.price.toStringAsFixed(0)}", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.blue[200] : Colors.blue.shade900))
                       ],
                     ),
-
                     if (isUpcoming)
                       ElevatedButton(
-                        onPressed: () {},
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isDark ? Colors.grey[800] : Colors.black,
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                          elevation: 5,
-                        ),
+                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailsPage(booking: booking))),
+                        style: ElevatedButton.styleFrom(backgroundColor: isDark ? Colors.grey[800] : Colors.black, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 5),
                         child: const Text("View Ticket", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                       )
                     else
-                      OutlinedButton(
-                        onPressed: () {},
-                        style: OutlinedButton.styleFrom(
-                          side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey.shade300),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                        child: Text("Book Again", style: TextStyle(color: textColor)),
-                      ),
+                      OutlinedButton(onPressed: () {}, style: OutlinedButton.styleFrom(side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey.shade300), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text("Book Again", style: TextStyle(color: textColor))),
                   ],
                 ),
               ],
@@ -414,14 +301,8 @@ class TicketCard extends StatelessWidget {
       children: [
         Text(label.toUpperCase(), style: TextStyle(fontSize: 11, color: Colors.grey[500], fontWeight: FontWeight.bold)),
         const SizedBox(height: 4),
-        Text(
-            "${date.day} ${_getMonth(date.month)}",
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)
-        ),
-        Text(
-            date.year.toString(),
-            style: TextStyle(fontSize: 13, color: Colors.grey[600])
-        ),
+        Text("${date.day} ${_getMonth(date.month)}", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+        Text(date.year.toString(), style: TextStyle(fontSize: 13, color: Colors.grey[600])),
       ],
     );
   }

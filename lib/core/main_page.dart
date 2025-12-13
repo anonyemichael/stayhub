@@ -18,32 +18,28 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
 
-  // The 5 main screens of the app
-  final List<Widget> _pages = [
-    const HomePage(),
-    const ClipsPage(),
-    const MapPage(),
-    const BookingsPage(),
-    const ProfilePage(),
-  ];
-
   @override
   Widget build(BuildContext context) {
-    // Check if dark mode is active to adjust glass styling
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
+    final List<Widget> pages = [
+      const HomePage(),
+      ClipsPage(isActive: _currentIndex == 1), // Pass active state
+      const MapPage(),
+      const BookingsPage(),
+      ProfilePage(), // Removed const
+    ];
+
     return Scaffold(
-      // Key property: Allows the page content to flow BEHIND the floating nav bar
       extendBody: true,
-
-      body: _pages[_currentIndex],
-
+      body: IndexedStack(
+        index: _currentIndex,
+        children: pages,
+      ),
       bottomNavigationBar: Container(
-        // Lift the nav bar up slightly for that "Floating" look
         margin: const EdgeInsets.fromLTRB(20, 0, 20, 30),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
-          // Soft shadow to make it pop off the screen
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.15),
@@ -55,16 +51,13 @@ class _MainPageState extends State<MainPage> {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
-            // The Glass Blur Effect
             filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
               decoration: BoxDecoration(
-                // Semi-transparent background
                 color: isDark
                     ? Colors.black.withValues(alpha: 0.75)
                     : Colors.white.withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(30),
-                // Subtle white/grey border to define the glass edges
                 border: Border.all(
                   color: isDark ? Colors.white.withValues(alpha: 0.1) : Colors.white.withValues(alpha: 0.6),
                   width: 1.5,
@@ -73,11 +66,11 @@ class _MainPageState extends State<MainPage> {
               child: BottomNavigationBar(
                 currentIndex: _currentIndex,
                 elevation: 0,
-                backgroundColor: Colors.transparent, // Must be transparent for glass effect
+                backgroundColor: Colors.transparent,
                 type: BottomNavigationBarType.fixed,
                 selectedItemColor: Theme.of(context).primaryColor,
                 unselectedItemColor: isDark ? Colors.white54 : Colors.grey.shade500,
-                showSelectedLabels: false, // Clean look (no text)
+                showSelectedLabels: false,
                 showUnselectedLabels: false,
                 items: const [
                   BottomNavigationBarItem(
@@ -107,7 +100,6 @@ class _MainPageState extends State<MainPage> {
                   ),
                 ],
                 onTap: (index) {
-                  // Tactile feedback when clicking tabs
                   HapticFeedback.lightImpact();
                   setState(() => _currentIndex = index);
                 },

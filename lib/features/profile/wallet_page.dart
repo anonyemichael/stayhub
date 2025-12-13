@@ -2,6 +2,10 @@ import 'dart:ui'; // Crucial for ImageFilter
 import 'dart:math'; // For the background blob movement
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For Haptics
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:intl/intl.dart';
+import 'package:stayhub/services/firestore_service.dart';
 
 class WalletPage extends StatefulWidget {
   const WalletPage({super.key});
@@ -14,11 +18,15 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   // --- ANIMATION CONTROLLERS ---
   late AnimationController _bgController;
   late AnimationController _entranceController;
+  
+  final _firestoreService = FirestoreService();
+  final _auth = FirebaseAuth.instance;
+  final _currencyFormat = NumberFormat.currency(locale: 'en_GH', symbol: '₵');
 
   @override
   void initState() {
     super.initState();
-    // 1. The "Breathing" Background Animation (Copied from your HelpPage)
+    // 1. The "Breathing" Background Animation
     _bgController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 10),
@@ -40,6 +48,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
+    final user = _auth.currentUser;
+    if (user == null) return const Scaffold(body: Center(child: Text("Please log in")));
+
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A), // The "StayHub Premium" Dark Blue
       body: Stack(
@@ -55,19 +66,19 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   Positioned(
                     top: -100 + (_bgController.value * 30),
                     left: -50,
-                    child: _buildBlurCircle(300, Colors.purpleAccent.withOpacity(0.2)),
+                    child: _buildBlurCircle(300, Colors.purpleAccent.withValues(alpha: 0.2)),
                   ),
                   // Blob 2: Cyan (Bottom Right)
                   Positioned(
                     bottom: -50 - (_bgController.value * 50),
                     right: -100,
-                    child: _buildBlurCircle(350, Colors.cyanAccent.withOpacity(0.15)),
+                    child: _buildBlurCircle(350, Colors.cyanAccent.withValues(alpha: 0.15)),
                   ),
                   // Blob 3: Blue (Center moving)
                   Positioned(
                     top: 300,
                     left: -50 + (_bgController.value * 60),
-                    child: _buildBlurCircle(250, Colors.blueAccent.withOpacity(0.1)),
+                    child: _buildBlurCircle(250, Colors.blueAccent.withValues(alpha: 0.1)),
                   ),
                 ],
               );
@@ -106,8 +117,18 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // 1. The Credit Card
-                        _buildAnimatedItem(0, _buildCreditCard()),
+                        // 1. The Credit Card (Real Data)
+                        StreamBuilder<DocumentSnapshot>(
+                          stream: _firestoreService.getWalletBalance(user.uid),
+                          builder: (context, snapshot) {
+                            double balance = 0.0;
+                            if (snapshot.hasData && snapshot.data!.exists) {
+                              final data = snapshot.data!.data() as Map<String, dynamic>;
+                              balance = (data['walletBalance'] as num?)?.toDouble() ?? 0.0;
+                            }
+                            return _buildAnimatedItem(0, _buildCreditCard(balance));
+                          },
+                        ),
 
                         const SizedBox(height: 30),
 
@@ -129,21 +150,47 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text("Recent Activity", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                            Text("See All", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                            Text("See All", style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
                           ],
                         )),
 
                         const SizedBox(height: 15),
 
-                        // 4. Transaction List
-                        _buildAnimatedItem(3, Column(
-                          children: [
-                            _buildTransactionTile("Hostel Booking Payment", "- GHS 1,200.00", "Yesterday", true),
-                            _buildTransactionTile("Top Up from MTN MoMo", "+ GHS 500.00", "Oct 24", false),
-                            _buildTransactionTile("Refund: Booking #402", "+ GHS 150.00", "Oct 20", false),
-                            _buildTransactionTile("Service Fee", "- GHS 10.00", "Oct 20", true),
-                          ],
-                        )),
+                        // 4. Transaction List (Real Data)
+                        StreamBuilder<QuerySnapshot>(
+                          stream: _firestoreService.getUserTransactions(user.uid),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            final docs = snapshot.data?.docs ?? [];
+                            
+                            if (docs.isEmpty) {
+                              return _buildAnimatedItem(3, 
+                                Padding(
+                                  padding: const EdgeInsets.all(20),
+                                  child: Center(child: Text("No transactions yet", style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))),
+                                )
+                              );
+                            }
+
+                            return _buildAnimatedItem(3, Column(
+                              children: docs.map((doc) {
+                                final data = doc.data() as Map<String, dynamic>;
+                                final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+                                final date = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
+                                final isExpense = data['type'] == 'expense';
+                                
+                                return _buildTransactionTile(
+                                  data['title'] ?? 'Transaction',
+                                  "${isExpense ? '-' : '+'} ${_currencyFormat.format(amount)}",
+                                  DateFormat('MMM d').format(date),
+                                  isExpense
+                                );
+                              }).toList(),
+                            ));
+                          },
+                        ),
                       ],
                     ),
                   ),
@@ -185,9 +232,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
+          color: Colors.white.withValues(alpha: 0.05),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
         ),
         child: Icon(icon, color: Colors.white, size: 20),
       ),
@@ -195,7 +242,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
   }
 
   // The "Hero" Credit Card
-  Widget _buildCreditCard() {
+  Widget _buildCreditCard(double balance) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: BackdropFilter(
@@ -206,17 +253,17 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.white.withOpacity(0.15),
-                Colors.white.withOpacity(0.05),
+                Colors.white.withValues(alpha: 0.15),
+                Colors.white.withValues(alpha: 0.05),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withOpacity(0.2)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.2),
+                color: Colors.black.withValues(alpha: 0.2),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -230,10 +277,13 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text("Current Balance", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  Icon(Icons.wifi, color: Colors.white.withOpacity(0.6)),
+                  Icon(Icons.wifi, color: Colors.white.withValues(alpha: 0.6)),
                 ],
               ),
-              const Text("GHS 2,450.00", style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+              Text(
+                _currencyFormat.format(balance), 
+                style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)
+              ),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -241,7 +291,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   Container(
                     width: 40,
                     height: 24,
-                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(4)),
                   )
                 ],
               )
@@ -262,9 +312,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
             height: 60,
             width: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.05),
+              color: Colors.white.withValues(alpha: 0.05),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withOpacity(0.1)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
             ),
             child: Icon(icon, color: color, size: 26),
           ),
@@ -281,16 +331,16 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.03),
+        color: Colors.white.withValues(alpha: 0.03),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.05)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isNegative ? Colors.redAccent.withOpacity(0.1) : Colors.greenAccent.withOpacity(0.1),
+              color: isNegative ? Colors.redAccent.withValues(alpha: 0.1) : Colors.greenAccent.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -305,7 +355,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                Text(date, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+                Text(date, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
               ],
             ),
           ),

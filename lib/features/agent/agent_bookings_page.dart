@@ -3,8 +3,6 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-// A dedicated page for Agents to see bookings for THEIR hostels.
-
 class AgentBookingsPage extends StatefulWidget {
   const AgentBookingsPage({super.key});
 
@@ -26,11 +24,9 @@ class _AgentBookingsPageState extends State<AgentBookingsPage> {
     return Scaffold(
       backgroundColor: Colors.grey[50],
       body: StreamBuilder<QuerySnapshot>(
-        // THE CORE LOGIC: Find all hostels belonging to this agent, then query bookings for those hostels.
-        // This is more complex than a user's view, so we handle it carefully.
         stream: FirebaseFirestore.instance
-            .collectionGroup('bookings') // Query across all users' booking sub-collections
-            .where('agentId', isEqualTo: user.uid) // Filter by agentId stored in the booking
+            .collectionGroup('bookings')
+            .where('agentId', isEqualTo: user.uid)
             .orderBy('bookingDate', descending: true)
             .snapshots(),
         builder: (context, snapshot) {
@@ -72,7 +68,6 @@ class _AgentBookingsPageState extends State<AgentBookingsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Top Row: Hostel Name & Price
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
@@ -90,17 +85,12 @@ class _AgentBookingsPageState extends State<AgentBookingsPage> {
                         ],
                       ),
                       const Divider(height: 24),
-
-                      // Middle Row: User & Date
                       _buildInfoRow(Icons.person, "Booked by", data['userName'] ?? 'N/A'),
                       const SizedBox(height: 8),
                       _buildInfoRow(Icons.calendar_today, "Booking Date", DateFormat('MMM d, yyyy').format(bookingDate)),
                       const SizedBox(height: 8),
                       _buildInfoRow(Icons.tag, "Booking ID", docs[index].id, isMono: true),
-                      
                       const SizedBox(height: 16),
-
-                      // Action Buttons
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
