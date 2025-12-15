@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:stayhub/features/bookings/bookings_page.dart'; // Import the Booking model
+import 'package:stayhub/features/bookings/bookings_page.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 
 class BookingDetailsPage extends StatelessWidget {
   final Booking booking;
@@ -148,19 +149,33 @@ class BookingDetailsPage extends StatelessWidget {
             ),
             child: Column(
               children: [
-                // Simulated QR Code
-                Container(
-                  height: 150,
-                  width: 150,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  padding: const EdgeInsets.all(10),
-                  child: Center(
-                    child: Icon(Icons.qr_code_2, size: 130, color: Colors.black),
+
+              // Real QR Code
+              Container(
+                height: 160,
+                width: 160,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                padding: const EdgeInsets.all(10), // Padding for quiet zone
+                child: Center(
+                  child: QrImageView(
+                    data: booking.id, // The unique booking ID to scan
+                    version: QrVersions.auto,
+                    size: 140.0,
+                    backgroundColor: Colors.white,
+                    eyeStyle: const QrEyeStyle(
+                         eyeShape: QrEyeShape.square,
+                         color: Colors.black,
+                    ),
+                    dataModuleStyle: const QrDataModuleStyle(
+                         dataModuleShape: QrDataModuleShape.square,
+                         color: Colors.black,
+                    ),
                   ),
                 ),
+              ),
                 const SizedBox(height: 12),
                 Text(
                   "Booking ID: ${booking.id.substring(0, 8).toUpperCase()}",

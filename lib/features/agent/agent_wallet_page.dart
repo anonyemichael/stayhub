@@ -139,7 +139,8 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
                 double balance = 0.0;
                 if (snapshot.hasData && snapshot.data!.exists) {
                   final data = snapshot.data!.data() as Map<String, dynamic>;
-                  balance = (data['walletBalance'] as num?)?.toDouble() ?? 0.0;
+                  final rawBal = data['walletBalance'];
+                  balance = (rawBal is String ? double.tryParse(rawBal) : (rawBal as num?)?.toDouble()) ?? 0.0;
                 }
                 return _buildCreditCard(balance);
               },
@@ -269,7 +270,8 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
   Widget _buildTransactionTile(Map<String, dynamic> data) {
     // Logic for display
     final isExpense = data['type'] == 'payout' || data['type'] == 'expense';
-    final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
+    final rawAmt = data['amount'];
+    final amount = (rawAmt is String ? double.tryParse(rawAmt) : (rawAmt as num?)?.toDouble()) ?? 0.0;
     final date = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
     final status = data['status'] ?? 'completed';
     final isPending = status == 'pending';

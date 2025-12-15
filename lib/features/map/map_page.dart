@@ -1,6 +1,7 @@
 import 'dart:async';
-import 'dart:ui'; // For Glassmorphism
+import 'dart:ui'; 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -9,13 +10,14 @@ import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
 
 class MapPage extends StatefulWidget {
-  const MapPage({super.key});
+  final bool isActive;
+  const MapPage({super.key, this.isActive = true});
 
   @override
   State<MapPage> createState() => _MapPageState();
 }
 
-class _MapPageState extends State<MapPage> {
+class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   final FirestoreService _firestoreService = FirestoreService();
   final TextEditingController _searchController = TextEditingController();
   GoogleMapController? _mapController;
@@ -29,16 +31,45 @@ class _MapPageState extends State<MapPage> {
   late Stream<QuerySnapshot> _hostelsStream;
   String _searchQuery = "";
   String _selectedFilter = "Any Price";
+  
+  bool _showSearchAreaButton = false;
+  String? _darkMapStyle;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _hostelsStream = _firestoreService.getHostels();
     _checkLocationPermission();
+    _loadMapStyle();
+  }
+
+  Future<void> _loadMapStyle() async {
+    try {
+      _darkMapStyle = await rootBundle.loadString('assets/map_style_dark.json');
+    } catch (e) {
+      debugPrint("Could not load map style: $e");
+    }
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    _updateMapStyle();
+  }
+
+  void _updateMapStyle() {
+    if (_mapController == null || _darkMapStyle == null) return;
+    final brightness = WidgetsBinding.instance.platformDispatcher.platformBrightness;
+    if (brightness == Brightness.dark) {
+      _mapController!.setMapStyle(_darkMapStyle);
+    } else {
+      _mapController!.setMapStyle(null);
+    }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _chipScrollController.dispose();
     super.dispose();
@@ -48,7 +79,9 @@ class _MapPageState extends State<MapPage> {
     final status = await Permission.location.request();
     if (mounted && status.isGranted) {
       setState(() => _locationPermissionGranted = true);
-      _moveCameraToUserLocation(); // Move to location once permission is granted
+      if (widget.isActive) {
+        _moveCameraToUserLocation();
+      }
     }
   }
 
@@ -68,28 +101,32 @@ class _MapPageState extends State<MapPage> {
   Set<Marker> _createMarkers(List<QueryDocumentSnapshot> docs) {
     return docs.map((doc) {
       final data = doc.data() as Map<String, dynamic>;
-      final hostelData = Map<String, dynamic>.from(data);
-      hostelData['id'] = doc.id;
-
-      // Simple offset for demo purposes
-      final double latOffset = (doc.id.hashCode % 100) * 0.0001;
-      final double lngOffset = (doc.id.hashCode % 100) * 0.0001;
-
-      final LatLng position = LatLng(
-          _initialCenter.latitude + latOffset,
-          _initialCenter.longitude + lngOffset
-      );
+      finalWtihId(data, doc.id);
+      
+      LatLng position;
+      if (data['latitude'] != null && data['longitude'] != null) {
+         position = LatLng(data['latitude'], data['longitude']);
+      } else {
+         // Fallback for old data without coordinates
+         final double latOffset = (doc.id.hashCode % 100) * 0.0001;
+         final double lngOffset = (doc.id.hashCode % 100) * 0.0001;
+         position = LatLng(
+             _initialCenter.latitude + latOffset,
+             _initialCenter.longitude + lngOffset
+         );
+      }
 
       return Marker(
         markerId: MarkerId(doc.id),
         position: position,
+        // Differentiate expensive/cheap hostels with color hue
         icon: BitmapDescriptor.defaultMarkerWithHue(
             (double.tryParse(data['price'].toString().replaceAll(',', '')) ?? 0) > 2000
                 ? BitmapDescriptor.hueViolet
                 : BitmapDescriptor.hueAzure
         ),
         onTap: () {
-          setState(() => _selectedHostel = hostelData);
+          setState(() => _selectedHostel = data);
           if (_mapController != null) {
              _mapController!.animateCamera(
               CameraUpdate.newLatLng(LatLng(position.latitude - 0.002, position.longitude)),
@@ -99,9 +136,17 @@ class _MapPageState extends State<MapPage> {
       );
     }).toSet();
   }
+  
+  void finalWtihId(Map<String, dynamic> data, String id) {
+    data['id'] = id;
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.isActive) return const SizedBox.shrink(); 
+
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
     return Scaffold(
       body: Stack(
         children: [
@@ -112,7 +157,6 @@ class _MapPageState extends State<MapPage> {
                 return const Center(child: CircularProgressIndicator());
               }
               
-              // PERFORMANCE OPTIMIZATION: Filter here, not in _createMarkers
               final filteredDocs = snapshot.data!.docs.where((doc) {
                 final data = doc.data() as Map<String, dynamic>;
                 final name = (data['name'] ?? '').toString().toLowerCase();
@@ -134,7 +178,13 @@ class _MapPageState extends State<MapPage> {
 
               return GoogleMap(
                 initialCameraPosition: CameraPosition(target: _initialCenter, zoom: 14),
-                onMapCreated: (controller) => _mapController = controller,
+                onMapCreated: (controller) {
+                   _mapController = controller;
+                   _updateMapStyle();
+                },
+                onCameraMove: (_) {
+                   if (!_showSearchAreaButton) setState(() => _showSearchAreaButton = true);
+                },
                 markers: _createMarkers(filteredDocs),
                 myLocationEnabled: _locationPermissionGranted,
                 myLocationButtonEnabled: false,
@@ -144,6 +194,7 @@ class _MapPageState extends State<MapPage> {
             },
           ),
 
+          // Top Search Bar
           Positioned(
             top: 50,
             left: 20,
@@ -156,7 +207,34 @@ class _MapPageState extends State<MapPage> {
               ],
             ),
           ),
+          
+          // "Search this area" Button
+          if (_showSearchAreaButton)
+            Positioned(
+              top: 160,
+              left: 100,
+              right: 100,
+              child: Center(
+                child: GestureDetector(
+                  onTap: () {
+                     setState(() => _showSearchAreaButton = false);
+                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Searching this area..."), duration: Duration(milliseconds: 500)));
+                     // In a real app, you'd trigger a geo-query here based on map bounds
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4, offset: const Offset(0,2))]
+                    ),
+                    child: const Text("Search this area", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  ),
+                ),
+              ),
+            ),
 
+          // Map Controls
           Positioned(
             right: 16,
             bottom: _selectedHostel != null ? 240 : 120,
@@ -173,6 +251,7 @@ class _MapPageState extends State<MapPage> {
             ),
           ),
 
+          // Hostel Card Slide-up
           AnimatedPositioned(
             duration: const Duration(milliseconds: 300),
             curve: Curves.easeInOut,
@@ -192,8 +271,9 @@ class _MapPageState extends State<MapPage> {
 
   Widget _buildGlassSearchBar(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final glassColor = isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.8);
-    final textColor = isDark ? Colors.white70 : Colors.grey[600];
+    final glassColor = isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white.withValues(alpha: 0.9); // Increased opacity for light mode
+    final textColor = isDark ? Colors.white70 : Colors.black87; // Darker text for light mode
+    final hintColor = isDark ? Colors.white38 : Colors.black54; 
     
     return ClipRRect(
       borderRadius: BorderRadius.circular(30),
@@ -205,19 +285,19 @@ class _MapPageState extends State<MapPage> {
           decoration: BoxDecoration(
             color: glassColor,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: isDark ? Colors.white12 : Colors.white.withValues(alpha: 0.5)),
+            border: Border.all(color: isDark ? Colors.white12 : Colors.black.withValues(alpha: 0.05)), // Subtle border in light mode
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 10, offset: const Offset(0, 5))],
           ),
           child: Row(
             children: [
-              Icon(Icons.search, color: textColor),
+              Icon(Icons.search, color: hintColor),
               const SizedBox(width: 10),
               Expanded(
                 child: TextField(
                   controller: _searchController,
                   onChanged: (value) => setState(() => _searchQuery = value.toLowerCase().trim()),
-                  style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontSize: 16),
-                  decoration: InputDecoration(hintText: "Find hostel near me...", hintStyle: TextStyle(color: textColor), border: InputBorder.none),
+                  style: TextStyle(color: textColor, fontSize: 16),
+                  decoration: InputDecoration(hintText: "Find hostel near me...", hintStyle: TextStyle(color: hintColor), border: InputBorder.none),
                 ),
               ),
               if (_searchQuery.isNotEmpty)
@@ -246,17 +326,25 @@ class _MapPageState extends State<MapPage> {
         itemCount: filters.length,
         itemBuilder: (context, index) {
           final isActive = _selectedFilter == filters[index];
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          
           return GestureDetector(
             onTap: () => setState(() => _selectedFilter = filters[index]),
             child: Container(
               margin: const EdgeInsets.only(right: 10),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               decoration: BoxDecoration(
-                color: isActive ? Theme.of(context).primaryColor : (Theme.of(context).brightness == Brightness.dark ? Colors.black.withValues(alpha: 0.6) : Colors.white),
+                color: isActive ? Theme.of(context).primaryColor : (isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white),
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: const Offset(0,2))],
               ),
-              child: Text(filters[index], style: TextStyle(color: isActive ? Colors.white : null, fontWeight: FontWeight.w600)),
+              child: Text(
+                filters[index], 
+                style: TextStyle(
+                  color: isActive ? Colors.white : (isDark ? Colors.white70 : Colors.black87), // Dark text in light mode
+                  fontWeight: FontWeight.w600
+                )
+              ),
             ),
           );
         },
@@ -304,10 +392,16 @@ class _MapPageState extends State<MapPage> {
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    height: 36,
+                    height: 40,
                     child: ElevatedButton(
                       onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HostelDetailsPage(hostel: hostel))),
-                      child: const Text("View Details", style: TextStyle(color: Colors.white, fontSize: 12)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).primaryColor,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                      child: const Text("View Details", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                     ),
                   ),
                 ],

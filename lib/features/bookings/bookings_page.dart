@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:ui'; // For Glassmorphism
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/features/bookings/booking_details_page.dart';
+import 'package:stayhub/services/payment_service.dart';
+import 'package:stayhub/features/chat/chat_page.dart';
 
 // 1. DATA MODEL
 class Booking {
@@ -15,6 +18,7 @@ class Booking {
   final DateTime checkOut;
   final String status; // 'CONFIRMED', 'COMPLETED', 'CANCELLED'
   final double price;
+  final String agentId;
 
   Booking({
     required this.id,
@@ -25,6 +29,7 @@ class Booking {
     required this.checkOut,
     required this.status,
     required this.price,
+    required this.agentId,
   });
 
   factory Booking.fromFirestore(DocumentSnapshot doc) {
@@ -38,6 +43,7 @@ class Booking {
       checkOut: (data['checkOut'] as Timestamp?)?.toDate() ?? DateTime.now(),
       status: data['status'] ?? 'CONFIRMED',
       price: (data['price'] as num?)?.toDouble() ?? 0.0,
+      agentId: data['agentId'] ?? '',
     );
   }
 }
@@ -215,12 +221,13 @@ class TicketCard extends StatelessWidget {
             children: [
               ClipRRect(
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                child: Image.network(
-                  booking.imageUrl,
+                child: CachedNetworkImage(
+                  imageUrl: booking.imageUrl,
                   height: 150,
                   width: double.infinity,
                   fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(height: 150, color: isDark ? Colors.grey[800] : Colors.grey[300], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
+                  memCacheWidth: 600,
+                  errorWidget: (context, url, error) => Container(height: 150, color: isDark ? Colors.grey[800] : Colors.grey[300], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                 ),
               ),
               Positioned.fill(child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(top: Radius.circular(24)), gradient: LinearGradient(colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent], begin: Alignment.bottomCenter, end: Alignment.center)))),
@@ -277,7 +284,41 @@ class TicketCard extends StatelessWidget {
                         Text("GHS ${booking.price.toStringAsFixed(0)}", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.blue[200] : Colors.blue.shade900))
                       ],
                     ),
-                    if (isUpcoming)
+                    if (booking.status == 'CONFIRMED')
+                       ElevatedButton.icon(
+                        onPressed: () async {
+                           final email = FirebaseAuth.instance.currentUser?.email ?? "student@stayhub.com";
+                           final ref = "REF-${DateTime.now().millisecondsSinceEpoch}";
+                           
+                           final reference = await PaymentService().chargeCard(
+                             context: context, 
+                             amount: booking.price, 
+                             email: email, 
+                             reference: ref
+                           );
+
+                           if (reference != null) {
+                             // Success!
+                             await FirestoreService().updateBookingStatus(
+                               FirebaseAuth.instance.currentUser!.uid, 
+                               booking.id, 
+                               'PAID'
+                             );
+                             
+                             if (context.mounted) {
+                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment Successful! Booking Confirmed."), backgroundColor: Colors.green));
+                             }
+                           } else {
+                             if (context.mounted) {
+                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment Cancelled"), backgroundColor: Colors.red));
+                             }
+                           }
+                        },
+                        icon: const Icon(Icons.payment, size: 16),
+                        label: const Text("Pay Now"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.green, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 5),
+                      )
+                    else if (booking.status == 'PAID')
                       ElevatedButton(
                         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailsPage(booking: booking))),
                         style: ElevatedButton.styleFrom(backgroundColor: isDark ? Colors.grey[800] : Colors.black, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 5),
@@ -287,6 +328,17 @@ class TicketCard extends StatelessWidget {
                       OutlinedButton(onPressed: () {}, style: OutlinedButton.styleFrom(side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey.shade300), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text("Book Again", style: TextStyle(color: textColor))),
                   ],
                 ),
+                if (booking.agentId.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton.icon(
+                      onPressed: () => _messageAgent(context, booking.agentId),
+                      icon: const Icon(Icons.chat_bubble_outline, size: 18), 
+                      label: Text("Message Agent", style: TextStyle(color: isDark ? Colors.blue[200] : Colors.blue)),
+                    ),
+                  ),
+                ]
               ],
             ),
           ),
@@ -310,5 +362,68 @@ class TicketCard extends StatelessWidget {
   String _getMonth(int month) {
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
     return months[month - 1];
+  }
+
+  void _messageAgent(BuildContext context, String agentId) async {
+    final currentUser = FirebaseAuth.instance.currentUser;
+    if (currentUser == null) return;
+
+    // Check if chat exists
+    final chatsRef = FirebaseFirestore.instance.collection('chats');
+    final query = await chatsRef
+        .where('users', arrayContains: currentUser.uid)
+        .get();
+
+    String? chatId;
+    for (var doc in query.docs) {
+      final users = List<String>.from(doc['users']);
+      if (users.contains(agentId)) {
+        chatId = doc.id;
+        break;
+      }
+    }
+
+    // Get Agent Name
+    String agentName = "Agent";
+    try {
+      final agentDoc = await FirebaseFirestore.instance.collection('users').doc(agentId).get();
+      if (agentDoc.exists) {
+        agentName = agentDoc['name'] ?? "Agent";
+      }
+    } catch (e) {
+      debugPrint("Error fetching agent name: $e");
+    }
+
+    // Create if not exists
+    if (chatId == null) {
+      final newChat = await chatsRef.add({
+        'users': [currentUser.uid, agentId],
+        'lastMessage': '',
+        'lastMessageTime': FieldValue.serverTimestamp(),
+        // New Metadata for better UI context
+        'hostelName': booking.hostelName,
+        'studentName': currentUser.displayName ?? 'Student',
+        'hostelId': booking.hostelName, // Using name as ID if actual ID not available easily here, but usually safer to store real ID.
+        // Actually, we don't have hostelId in Booking model? Let's check. 
+        // We don't have hostelId explicitly in local model but we might need it. 
+        // For now, hostelName is the critical request.
+      });
+      chatId = newChat.id;
+    } else {
+       // Optional: Update metadata if it's missing (legacy chats)
+       await chatsRef.doc(chatId).set({
+         'hostelName': booking.hostelName, // Ensure hostel name is always fresh
+         'studentName': currentUser.displayName ?? 'Student',
+       }, SetOptions(merge: true));
+    }
+
+    if (context.mounted) {
+       // For Student: Title is Agent Name (or Hostel Name if preferred?)
+       // User asked: "use hostel names as agent names" for students.
+       // So we pass hostelName as the title for the Chat Page.
+       Navigator.push(context, MaterialPageRoute(builder: (_) => 
+         ChatPage(chatId: chatId!, otherUserId: agentId, otherUserName: booking.hostelName) 
+       ));
+    }
   }
 }

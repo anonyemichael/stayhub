@@ -72,9 +72,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   Future<void> _startApp() async {
     _mainController.forward();
 
-    // PERFORMANCE OPTIMIZATION: Reduced forced delay from 3s to 1.5s.
-    // This maintains branding without making the user wait unnecessarily.
-    final minDelay = Future.delayed(const Duration(milliseconds: 1500));
+    // PERFORMANCE OPTIMIZATION: Reduced forced delay to 500ms.
+    final minDelay = Future.delayed(const Duration(milliseconds: 500));
     final navigationTask = _getDestinationScreen();
 
     // Use Future.wait to run parallel

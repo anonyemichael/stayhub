@@ -55,6 +55,7 @@ class _HomePageState extends State<HomePage> {
                 _buildSectionHeader(_searchQuery.isEmpty ? "Popular Hostels" : "Search Results", showSeeAll: _searchQuery.isEmpty),
                 const SizedBox(height: 15),
                 _buildPopularList(),
+                const SizedBox(height: 100), // Added padding for safe scrolling
               ],
             ),
           ),
@@ -191,7 +192,11 @@ class _HomePageState extends State<HomePage> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              CachedNetworkImage(imageUrl: data['image'] ?? '', fit: BoxFit.cover),
+              CachedNetworkImage(
+                imageUrl: data['image'] ?? '', 
+                fit: BoxFit.cover,
+                memCacheWidth: 1000, // Optimize memory usage
+              ),
               Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black87], begin: Alignment.topCenter, end: Alignment.bottomCenter))),
               Padding(
                 padding: const EdgeInsets.all(16.0),
@@ -260,7 +265,16 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            ClipRRect(borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), child: CachedNetworkImage(imageUrl: data['image'] ?? '', height: 140, width: double.infinity, fit: BoxFit.cover)),
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)), 
+              child: CachedNetworkImage(
+                imageUrl: data['image'] ?? '', 
+                height: 140, 
+                width: double.infinity, 
+                fit: BoxFit.cover,
+                memCacheWidth: 500, // Optimize memory usage (card width is small)
+              )
+            ),
             Padding(
               padding: const EdgeInsets.all(12),
               child: Column(

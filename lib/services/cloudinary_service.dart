@@ -21,4 +21,16 @@ class CloudinaryService {
       return null;
     }
   }
+
+  Future<String?> uploadVideo(File file) async {
+    try {
+      CloudinaryResponse response = await _cloudinary.uploadFile(
+        CloudinaryFile.fromFile(file.path, resourceType: CloudinaryResourceType.Video),
+      );
+      return response.secureUrl;
+    } catch (e) {
+      print("Cloudinary Video Upload Error: $e");
+      return null;
+    }
+  }
 }

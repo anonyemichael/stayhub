@@ -10,6 +10,7 @@ import 'package:stayhub/features/profile/edit_profile_page.dart';
 import 'package:stayhub/features/profile/notifications_settings_page.dart';
 import 'package:stayhub/features/profile/settings_page.dart';
 import 'package:stayhub/features/profile/wallet_page.dart';
+import 'package:stayhub/features/chat/student_inbox_page.dart';
 import 'package:stayhub/providers/theme_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -96,6 +97,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                         items: [
                           _buildMenuItem(Icons.person, "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfilePage()))),
                           _buildMenuItem(Icons.wallet, "Wallet", trailing: "GHS ${data['walletBalance'] ?? '0.00'}", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletPage()))),
+                          _buildMenuItem(Icons.message_outlined, "Messages", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentInboxPage()))),
                           _buildMenuItem(Icons.notifications, "Notifications", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsSettingsPage()))),
                         ],
                       ),
@@ -112,7 +114,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                       ),
                       const SizedBox(height: 40),
                       _buildLogoutButton(context),
-                      const SizedBox(height: 50),
+                      const SizedBox(height: 120), // Increased padding
                     ],
                   ),
                 ),

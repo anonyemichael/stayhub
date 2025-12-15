@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:stayhub/core/splash_screen.dart';
 import 'package:stayhub/firebase_options.dart';
+import 'package:stayhub/providers/locale_provider.dart';
 import 'package:stayhub/providers/theme_provider.dart';
+import 'package:stayhub/services/payment_service.dart'; // Import PaymentService
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +16,7 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+     PaymentService().initialize(); // Initialize Paystack
   } catch (e) {
     debugPrint("Firebase Initialization Error: $e");
   }
@@ -25,14 +29,24 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (context) => ThemeProvider(),
-      child: Consumer<ThemeProvider>(
-        builder: (context, themeProvider, child) {
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        ChangeNotifierProvider(create: (_) => LocaleProvider()),
+      ],
+      child: Consumer2<ThemeProvider, LocaleProvider>(
+        builder: (context, themeProvider, localeProvider, child) {
           return MaterialApp(
             debugShowCheckedModeBanner: false,
             title: 'StayHub',
             themeMode: themeProvider.themeMode,
+            locale: localeProvider.locale,
+            supportedLocales: L10n.all,
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
             theme: ThemeData(
               brightness: Brightness.light,
               primaryColor: const Color(0xFF2E2AB7),

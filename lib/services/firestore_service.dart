@@ -107,6 +107,53 @@ class FirestoreService {
     await _db.collection('users').doc(uid).collection('bookings').add(bookingData);
   }
 
+  // Used by Agents to Approve/Reject bookings
+  Future<void> updateBookingStatus(String userId, String bookingId, String status) async {
+    final bookingRef = _db.collection('users').doc(userId).collection('bookings').doc(bookingId);
+    
+    await _db.runTransaction((transaction) async {
+       final bookingSnapshot = await transaction.get(bookingRef);
+       if (!bookingSnapshot.exists) return;
+
+       transaction.update(bookingRef, {'status': status});
+       
+       // Handle Commission / Payout on Approval
+       if (status == 'CONFIRMED') {
+          final data = bookingSnapshot.data() as Map<String, dynamic>;
+          final agentId = data['agentId'];
+          final double agentEarnings = (data['agentPrice'] as num?)?.toDouble() ?? 0.0;
+          
+          if (agentId != null && agentEarnings > 0) {
+             final agentRef = _db.collection('agents').doc(agentId);
+             
+             // 1. Increment Wallet
+             transaction.update(agentRef, {
+               'wallet_balance': FieldValue.increment(agentEarnings)
+             });
+             
+             // 2. Add Transaction Record
+             final pendingTxnRef = _db.collection('agents').doc(agentId).collection('transactions').doc();
+             transaction.set(pendingTxnRef, {
+               'amount': agentEarnings,
+               'type': 'credit',
+               'description': 'Booking Revenue: ${data['hostelName']}',
+               'date': FieldValue.serverTimestamp(),
+               'bookingId': bookingId,
+             });
+          }
+       }
+    });
+    
+    // Create a notification for the user
+    await createNotification(
+      userId, 
+      "Booking Update", 
+      status == 'CONFIRMED' 
+          ? "Your booking has been APPROVED!" 
+          : "Your booking was updated to: $status"
+    );
+  }
+
   // ===========================================================================
   // 6. WALLET & PAYOUTS
   // ===========================================================================

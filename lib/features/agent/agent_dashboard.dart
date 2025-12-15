@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:fl_chart/fl_chart.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +9,9 @@ import 'package:stayhub/features/agent/agent_profile_page.dart'; // Corrected Im
 import 'package:stayhub/features/agent/agent_hostels_page.dart';
 import 'package:stayhub/features/agent/agent_bookings_page.dart';
 import 'package:stayhub/features/agent/add_hostel_page.dart';
+import 'package:stayhub/features/agent/ticket_scanner_page.dart';
+import 'package:stayhub/features/agent/agent_inbox_page.dart';
+import 'package:stayhub/features/agent/add_clip_page.dart';
 
 class AgentDashboard extends StatefulWidget {
   const AgentDashboard({super.key});
@@ -138,7 +142,8 @@ class DashboardOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final String name = userData['name'] ?? 'Agent';
-    final double walletBalance = (userData['wallet_balance'] ?? 0.0).toDouble();
+    final rawBal = userData['wallet_balance'];
+    final double walletBalance = (rawBal is String ? double.tryParse(rawBal) : (rawBal as num?)?.toDouble()) ?? 0.0;
     final currencyFormat = NumberFormat.currency(locale: 'en_GH', symbol: '₵');
     final uid = FirebaseAuth.instance.currentUser?.uid;
 
@@ -184,6 +189,29 @@ class DashboardOverview extends StatelessWidget {
                     builder: (context, bookingSnapshot) {
                       final totalBookings = bookingSnapshot.data?.docs.length ?? 0;
                       
+                      // Calculate Real Average Rating
+                      double totalRating = 0;
+                      int ratedHostels = 0;
+                      
+                      if (hostelSnapshot.hasData) {
+                        for (var doc in hostelSnapshot.data!.docs) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          if (data.containsKey('rating')) {
+                             final ratingVal = data['rating'];
+                             if (ratingVal is num) {
+                               totalRating += ratingVal.toDouble();
+                             } else if (ratingVal is String) {
+                               totalRating += double.tryParse(ratingVal) ?? 0.0;
+                             }
+                             ratedHostels++;
+                          }
+                        }
+                      }
+                      
+                      final String avgRatingDisplay = ratedHostels > 0 
+                          ? (totalRating / ratedHostels).toStringAsFixed(1) 
+                          : "New";
+
                       return ListView(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.only(left: 20),
@@ -191,7 +219,7 @@ class DashboardOverview extends StatelessWidget {
                         children: [
                           _buildFluidStatCard("Active Hostels", activeHostels.toString(), Icons.apartment_rounded, const Color(0xFFFF7E5F), const Color(0xFFFEB47B)),
                           _buildFluidStatCard("Total Bookings", totalBookings.toString(), Icons.bookmarks_rounded, const Color(0xFF6A11CB), const Color(0xFF2575FC)),
-                          _buildFluidStatCard("Avg. Rating", "4.8", Icons.star_rounded, const Color(0xFF11998E), const Color(0xFF38EF7D)),
+                          _buildFluidStatCard("Avg. Rating", avgRatingDisplay, Icons.star_rounded, const Color(0xFF11998E), const Color(0xFF38EF7D)),
                         ],
                       );
                     },
@@ -199,6 +227,29 @@ class DashboardOverview extends StatelessWidget {
                 },
               ),
             ),
+            
+            const SizedBox(height: 30),
+            
+             // ANALYTICS CHART
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20.0),
+              child: Text("Revenue Analytics", style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              height: 200,
+              margin: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.only(right: 20, top: 20, bottom: 10),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
+              ),
+              child: _buildRevenueChart(),
+            ),
+
+            const SizedBox(height: 30),
+
 
           const SizedBox(height: 30),
           Padding(
@@ -210,6 +261,15 @@ class DashboardOverview extends StatelessWidget {
                 const SizedBox(height: 15),
                 _buildActionTile(context, Icons.add_circle_outline, "Add New Hostel", "List a new property", () {
                   Navigator.push(context, MaterialPageRoute(builder: (_) => const AddHostelPage()));
+                }),
+                _buildActionTile(context, Icons.qr_code_scanner, "Scan Ticket", "Verify student check-in", () {
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => const TicketScannerPage()));
+                }),
+                _buildActionTile(context, Icons.message_outlined, "Messages", "Student inquiries", () {
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentInboxPage()));
+                }),
+                _buildActionTile(context, Icons.video_camera_back_outlined, "Post Video Clip", "Showcase your hostel", () {
+                   Navigator.push(context, MaterialPageRoute(builder: (_) => const AddClipPage()));
                 }),
                 _buildActionTile(context, Icons.verified_user_outlined, "Verify Profile", "Increase trust score", () {}),
               ],
@@ -337,5 +397,66 @@ class DashboardOverview extends StatelessWidget {
     if (hour < 12) return 'Good Morning,';
     if (hour < 17) return 'Good Afternoon,';
     return 'Good Evening,';
+  }
+  Widget _buildRevenueChart() {
+    // Mock Data for now, can be wired to real transactions later
+    return LineChart(
+      LineChartData(
+        gridData: FlGridData(show: false),
+        titlesData: FlTitlesData(
+          leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                const style = TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 10);
+                String text;
+                switch (value.toInt()) {
+                  case 0: text = 'JAN'; break;
+                  case 2: text = 'MAR'; break;
+                  case 4: text = 'MAY'; break;
+                  case 6: text = 'JUL'; break;
+                  case 8: text = 'SEP'; break;
+                  case 10: text = 'NOV'; break;
+                  default: return Container();
+                }
+                return Text(text, style: style);
+              },
+            ),
+          ),
+        ),
+        borderData: FlBorderData(show: false),
+        minX: 0,
+        maxX: 11,
+        minY: 0,
+        maxY: 6,
+        lineBarsData: [
+          LineChartBarData(
+            spots: const [
+              FlSpot(0, 3),
+              FlSpot(1, 1),
+              FlSpot(2, 4),
+              FlSpot(3, 2),
+              FlSpot(4, 5),
+              FlSpot(6, 3),
+              FlSpot(8, 4),
+              FlSpot(10, 5),
+              FlSpot(11, 4),
+            ],
+            isCurved: true,
+            color: Colors.blueAccent,
+            barWidth: 3,
+            isStrokeCapRound: true,
+            dotData: FlDotData(show: false),
+            belowBarData: BarAreaData(
+              show: true,
+              color: Colors.blueAccent.withOpacity(0.2),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

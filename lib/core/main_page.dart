@@ -25,7 +25,7 @@ class _MainPageState extends State<MainPage> {
     final List<Widget> pages = [
       const HomePage(),
       ClipsPage(isActive: _currentIndex == 1), // Pass active state
-      const MapPage(),
+      MapPage(isActive: _currentIndex == 2), // Pass active state
       const BookingsPage(),
       ProfilePage(), // Removed const
     ];

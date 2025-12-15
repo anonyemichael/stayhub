@@ -23,11 +23,33 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
   Future<void> _bookHostel() async {
     final user = _auth.currentUser;
     if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Please log in to book a room")),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please log in to book")));
       return;
     }
+
+    // 1. Request Gender
+    String? selectedSex = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Student Details"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text("Please select your gender for the specific room allocation."),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildGenderOption("Male", Icons.male),
+                _buildGenderOption("Female", Icons.female),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedSex == null) return; // User cancelled
 
     setState(() => _isBooking = true);
 
@@ -38,6 +60,8 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
       final image = widget.hostel['image'] ?? 'https://picsum.photos/500';
       final priceStr = widget.hostel['price']?.toString().replaceAll(',', '') ?? '0';
       final price = double.tryParse(priceStr) ?? 0.0;
+      final agentId = widget.hostel['agentId'] ?? ''; // Important for Agent to see it
+      final double agentEarnings = widget.hostel['agentPrice'] != null ? (widget.hostel['agentPrice'] as num).toDouble() : (price - 50); // Fallback if old data
 
       // Create Booking Object
       final bookingData = {
@@ -45,28 +69,42 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
         'hostelName': name,
         'location': location,
         'imageUrl': image,
-        'price': price,
+        'price': price, // Full Price User Pays
+        'agentPrice': agentEarnings, // What Agent Gets
+        'agentId': agentId, // Ensure Agent sees this
+        
+        // Student Info
+        'userName': user.displayName ?? 'Student',
+        'userId': user.uid,
+        'studentSex': selectedSex,
+        
         'checkIn': Timestamp.fromDate(DateTime.now().add(const Duration(days: 1))),
-        'checkOut': Timestamp.fromDate(DateTime.now().add(const Duration(days: 120))), // ~4 months
-        'status': 'CONFIRMED',
+        'checkOut': Timestamp.fromDate(DateTime.now().add(const Duration(days: 120))),
+        'status': 'PENDING', // Approval Flow
         'bookingDate': FieldValue.serverTimestamp(),
       };
 
       // Save to Firestore
       await FirestoreService().addBooking(user.uid, bookingData);
+      
       // Create Notification
-      await _firestoreService.createNotification(user.uid, "Booking Successful", "You have successfully booked $name.");
+      await _firestoreService.createNotification(user.uid, "Booking Requested", "Your request for $name is pending agent approval.");
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text("Booking Confirmed! Check 'My Bookings'."),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-          ),
+        // Updated Success Message
+        showDialog(
+          context: context,
+          builder: (_) => AlertDialog(
+            title: const Text("Request Sent"),
+            content: const Text("Your booking request has been sent to the agent. You will be notified once approved."),
+            actions: [
+               TextButton(onPressed: () {
+                 Navigator.pop(context); // Close dialog
+                 Navigator.pop(context); // Close page
+               }, child: const Text("OK"))
+            ],
+          )
         );
-        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -77,6 +115,27 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
     } finally {
       if (mounted) setState(() => _isBooking = false);
     }
+  }
+
+  Widget _buildGenderOption(String label, IconData icon) {
+    return GestureDetector(
+      onTap: () => Navigator.pop(context, label),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        decoration: BoxDecoration(
+          color: Colors.blue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 30, color: Colors.blue),
+            const SizedBox(height: 5),
+            Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleLike(bool isLiked) async {
@@ -124,6 +183,7 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
     final location = widget.hostel['location']?.toString() ?? 'Unknown Location';
     final price = widget.hostel['price']?.toString() ?? '0';
     final rating = widget.hostel['rating']?.toString() ?? '4.5';
+    final capacity = widget.hostel['capacity']?.toString() ?? '4'; // New
     final image = widget.hostel['image']?.toString() ?? 'https://picsum.photos/500/400';
     final hostelId = widget.hostel['id']?.toString();
     final user = _auth.currentUser;
@@ -246,6 +306,27 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
                               ),
                               const SizedBox(height: 4),
                               Text("124 reviews", style: TextStyle(color: textColor?.withValues(alpha: 0.6), fontSize: 12)),
+                              const SizedBox(height: 4),
+                              if (hostelId != null)
+                                StreamBuilder<QuerySnapshot>(
+                                  stream: FirebaseFirestore.instance.collectionGroup('bookings').where('hostelId', isEqualTo: hostelId).where('status', isEqualTo: 'CONFIRMED').snapshots(),
+                                  builder: (context, snapshot) {
+                                    final confirmedCount = snapshot.data?.docs.length ?? 0;
+                                    final totalCapacity = int.tryParse(capacity) ?? 4;
+                                    final spotsLeft = totalCapacity - confirmedCount;
+                                    
+                                    return Text(
+                                      spotsLeft > 0 ? "$spotsLeft / $totalCapacity spots left" : "Fully Booked",
+                                      style: TextStyle(
+                                        color: spotsLeft > 0 ? primaryColor : Colors.red,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12
+                                      ),
+                                    );
+                                  }
+                                )
+                              else
+                                Text("$capacity / room", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
                             ],
                           ),
                         ],
@@ -277,38 +358,46 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
                       const SizedBox(height: 30),
 
                       // Gallery (Horizontal Scroll)
-                      Text("Gallery", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
-                      const SizedBox(height: 15),
-                      SizedBox(
-                        height: 100,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          physics: const BouncingScrollPhysics(),
-                          children: [
-                            _buildGalleryImage("https://picsum.photos/id/10/200/200"),
-                            _buildGalleryImage("https://picsum.photos/id/12/200/200"),
-                            _buildGalleryImage("https://picsum.photos/id/14/200/200"),
-                            _buildGalleryImage("https://picsum.photos/id/16/200/200"),
-                          ],
+                      if ((widget.hostel['gallery'] as List?)?.isNotEmpty ?? false) ...[
+                        Text("Gallery", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+                        const SizedBox(height: 15),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            physics: const BouncingScrollPhysics(),
+                            itemCount: (widget.hostel['gallery'] as List).length,
+                            itemBuilder: (context, index) {
+                              return _buildGalleryImage((widget.hostel['gallery'] as List)[index]);
+                            }
+                          ),
                         ),
-                      ),
-
-                      const SizedBox(height: 30),
+                        const SizedBox(height: 30),
+                      ],
 
                       // Amenities
-                      Text("Amenities", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
-                      const SizedBox(height: 15),
-                      Wrap(
-                        spacing: 15,
-                        runSpacing: 15,
-                        children: [
-                          _buildAmenityChip(context, FontAwesomeIcons.wifi, "Free WiFi"),
-                          _buildAmenityChip(context, FontAwesomeIcons.snowflake, "AC"),
-                          _buildAmenityChip(context, FontAwesomeIcons.shieldHalved, "Security"),
-                          _buildAmenityChip(context, FontAwesomeIcons.kitchenSet, "Kitchen"),
-                          _buildAmenityChip(context, FontAwesomeIcons.bus, "Transport"),
-                        ],
-                      ),
+                      if ((widget.hostel['amenities'] as List?)?.isNotEmpty ?? false) ...[
+                        Text("Amenities", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+                        const SizedBox(height: 15),
+                        Wrap(
+                          spacing: 15,
+                          runSpacing: 15,
+                          children: (widget.hostel['amenities'] as List).map<Widget>((amenity) {
+                              IconData icon = FontAwesomeIcons.check;
+                              if (amenity == 'WiFi') icon = FontAwesomeIcons.wifi;
+                              if (amenity == 'AC') icon = FontAwesomeIcons.snowflake;
+                              if (amenity == 'Security') icon = FontAwesomeIcons.shieldHalved;
+                              if (amenity == 'Kitchen') icon = FontAwesomeIcons.kitchenSet;
+                              if (amenity == 'Transport' || amenity == 'Bus') icon = FontAwesomeIcons.bus;
+                              if (amenity == 'Generator') icon = FontAwesomeIcons.bolt;
+                              if (amenity == 'Water Flow') icon = FontAwesomeIcons.faucet;
+                              if (amenity == 'Study Room') icon = FontAwesomeIcons.bookOpen;
+                              
+                              return _buildAmenityChip(context, icon, amenity.toString());
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 30),
+                      ],
 
                       const SizedBox(height: 30),
 

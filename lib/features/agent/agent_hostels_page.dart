@@ -83,8 +83,9 @@ class _AgentHostelsPageState extends State<AgentHostelsPage> {
     final String location = data['location'] ?? 'Unknown Location';
     final String price = data['price']?.toString() ?? '0';
     final bool isFeatured = data['isFeatured'] ?? false;
-    // Placeholder rating logic
-    const String rating = "4.5";
+    // Real rating logic
+    final dynamic rawRating = data['rating'];
+    final String rating = rawRating != null ? (rawRating as num).toStringAsFixed(1) : "New";
 
     return Container(
       decoration: BoxDecoration(
@@ -215,11 +216,11 @@ class _AgentHostelsPageState extends State<AgentHostelsPage> {
                         color: Colors.green.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Row(
+                      child: Row(
                         children: [
-                          Icon(Icons.star, size: 14, color: Colors.green),
-                          SizedBox(width: 4),
-                          Text(rating, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
+                          const Icon(Icons.star, size: 14, color: Colors.green),
+                          const SizedBox(width: 4),
+                          Text(rating, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green)),
                         ],
                       ),
                     )

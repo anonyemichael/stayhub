@@ -1,5 +1,4 @@
 import 'dart:ui'; // Crucial for ImageFilter
-import 'dart:math'; // For the background blob movement
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For Haptics
 import 'package:cloud_firestore/cloud_firestore.dart';

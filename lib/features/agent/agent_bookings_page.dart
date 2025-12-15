@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
+import 'package:stayhub/features/chat/chat_page.dart';
+import 'package:stayhub/services/firestore_service.dart';
+import 'package:share_plus/share_plus.dart';
 
 class AgentBookingsPage extends StatefulWidget {
   const AgentBookingsPage({super.key});
@@ -58,11 +61,15 @@ class _AgentBookingsPageState extends State<AgentBookingsPage> {
             itemBuilder: (context, index) {
               final data = docs[index].data() as Map<String, dynamic>;
               final bookingDate = (data['bookingDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+              final status = data['status'] ?? 'PENDING';
+              final isPending = status == 'PENDING';
+              final bookingId = docs[index].id;
+              final userId = data['userId']; // Needed for update
 
               return Card(
                 elevation: 2,
                 margin: const EdgeInsets.only(bottom: 16),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16), side: isPending ? BorderSide(color: Colors.orange.shade300, width: 2) : BorderSide.none),
                 child: Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Column(
@@ -78,31 +85,134 @@ class _AgentBookingsPageState extends State<AgentBookingsPage> {
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
-                          Text(
-                            _currencyFormat.format(data['price'] ?? 0.0),
-                            style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: isPending ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(status, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isPending ? Colors.orange : Colors.green)),
                           ),
                         ],
                       ),
                       const Divider(height: 24),
-                      _buildInfoRow(Icons.person, "Booked by", data['userName'] ?? 'N/A'),
+                      _buildInfoRow(Icons.person, "Student", data['userName'] ?? 'N/A'),
                       const SizedBox(height: 8),
-                      _buildInfoRow(Icons.calendar_today, "Booking Date", DateFormat('MMM d, yyyy').format(bookingDate)),
+                      _buildInfoRow(Icons.wc, "Sex", data['studentSex'] ?? 'Not Specified'), // New
                       const SizedBox(height: 8),
-                      _buildInfoRow(Icons.tag, "Booking ID", docs[index].id, isMono: true),
+                      _buildInfoRow(Icons.tag, "Ticket ID", bookingId, isMono: true), // Requested
                       const SizedBox(height: 16),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(onPressed: () {}, child: const Text("Contact User")),
-                          const SizedBox(width: 8),
-                          ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A237E)),
-                            child: const Text("View Details", style: TextStyle(color: Colors.white)),
-                          ),
-                        ],
-                      ),
+                      
+                      if (isPending)
+                        Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () async {
+                                      // Correctly find or create a chat for this user-agent pair
+                                      final currentUser = FirebaseAuth.instance.currentUser;
+                                      if (currentUser == null) return;
+                                      
+                                      final studentId = userId; // From booking data
+                                      final agentId = currentUser.uid;
+
+                                      // 1. Check for existing chat
+                                      final chatsRef = FirebaseFirestore.instance.collection('chats');
+                                      final query = await chatsRef
+                                          .where('users', arrayContains: agentId)
+                                          .get();
+
+                                      String? targetChatId;
+                                      // Client-side filtering for the second user because Firestore can't arrayContains two values easily in one query without complex index
+                                      for (var doc in query.docs) {
+                                        final users = List<String>.from(doc['users']);
+                                        if (users.contains(studentId)) {
+                                          targetChatId = doc.id;
+                                          break;
+                                        }
+                                      }
+
+                                      // 2. Create if not exists
+                                      if (targetChatId == null) {
+                                        final newChat = await chatsRef.add({
+                                          'users': [agentId, studentId],
+                                          'lastMessage': '',
+                                          'lastMessageTime': FieldValue.serverTimestamp(),
+                                          'hostelName': data['hostelName'] ?? 'Hostel',
+                                          'studentName': data['userName'] ?? 'Student',
+                                          'hostelId': data['hostelId'] ?? '', 
+                                        });
+                                        targetChatId = newChat.id;
+                                      }
+
+                                      if (context.mounted) {
+                                        Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
+                                          chatId: targetChatId!, 
+                                          otherUserName: data['userName'] ?? 'Student', 
+                                          otherUserId: studentId
+                                        )));
+                                      }
+                                    },
+                                    icon: const Icon(Icons.chat_bubble_outline, size: 16),
+                                    label: const Text("Chat"),
+                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.blue),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: OutlinedButton.icon(
+                                    onPressed: () {
+                                      Share.share("Hello ${data['userName']}, please pay GHS ${data['price']} via Mobile Money to 0551234567 to confirm your booking at ${data['hostelName']}. Booking ID: $bookingId");
+                                    },
+                                    icon: const Icon(Icons.share, size: 16),
+                                    label: const Text("Pay Req"),
+                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.purple),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: OutlinedButton(
+                                    onPressed: () async {
+                                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('bookings').doc(bookingId).update({'status': 'REJECTED'});
+                                    },
+                                    style: OutlinedButton.styleFrom(foregroundColor: Colors.red),
+                                    child: const Text("Reject"),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    onPressed: () async {
+                                      await FirestoreService().updateBookingStatus(userId, bookingId, 'CONFIRMED');
+                                    },
+                                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                                    child: const Text("Approve", style: TextStyle(color: Colors.white)),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                      else
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                             Text(
+                              "Earnings: ${_currencyFormat.format(data['agentPrice'] ?? (data['price'] ?? 0) - 50)}",
+                              style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 14),
+                            ),
+                            Text(
+                              "Total: ${_currencyFormat.format(data['price'] ?? 0.0)}",
+                              style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16),
+                            ),
+                          ],
+                        ),
                     ],
                   ),
                 ),
