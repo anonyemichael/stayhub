@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/auth/auth_page.dart';
 import 'package:stayhub/core/main_page.dart';
 import 'package:stayhub/features/agent/agent_dashboard.dart';
+import 'package:stayhub/core/onboarding_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -87,26 +89,37 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
 
   Future<Widget> _getDestinationScreen() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null) return const AuthPage();
+    
+    // 1. If user is logged in, check role
+    if (user != null) {
+      try {
+        final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.uid).get();
+        if (adminDoc.exists) return const AgentDashboard(); 
 
-    try {
-      // PERFORMANCE OPTIMIZATION: Sequential checks are safer but we want speed.
-      // We check 'agents' first as they are likely the ones using this dashboard often? 
-      // Actually, checking admins is rare. Let's keep logic but ensure it fails fast.
-      
-      // We use 'get(GetOptions(source: Source.serverAndCache))' by default which is good.
-      
-      final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.uid).get();
-      if (adminDoc.exists) return const AgentDashboard(); 
+        final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(user.uid).get();
+        if (agentDoc.exists) return const AgentDashboard();
 
-      final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(user.uid).get();
-      if (agentDoc.exists) return const AgentDashboard();
-
-      // Default User
-      return const MainPage();
-    } catch (e) {
-      return const AuthPage();
+        // Default User
+        return const MainPage();
+      } catch (e) {
+        return const AuthPage();
+      }
     }
+
+    // 2. If NOT logged in, check Onboarding status
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final seenOnboarding = prefs.getBool('seenOnboarding') ?? false;
+      
+      if (!seenOnboarding) {
+        return const OnboardingPage();
+      }
+    } catch (e) {
+      // Fallback if prefs fail
+      debugPrint("Prefs Error: $e");
+    }
+
+    return const AuthPage();
   }
 
   void _navigate(Widget screen) {

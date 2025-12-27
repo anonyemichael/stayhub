@@ -8,13 +8,14 @@ plugins {
 }
 
 android {
-    namespace = "com.example.stayhub.stayhub"
+    namespace = "com.stayhub.app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -22,7 +23,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.stayhub.stayhub"
+        applicationId = "com.stayhub.app"
         // ✨ FIX: Explicitly set minSdk to 23 for modern plugin compatibility
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
@@ -30,9 +31,24 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            keyAlias = "upload"
+            keyPassword = "stayhub123"
+            storeFile = file("upload-keystore.jks")
+            storePassword = "stayhub123"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+            // WORAKROUND: Disable shrinking/minification to bypass "failed to strip debug symbols" error
+            isShrinkResources = false
+            isMinifyEnabled = false
+            ndk {
+                debugSymbolLevel = "SYMBOL_TABLE" 
+            }
         }
     }
 }
@@ -42,6 +58,7 @@ flutter {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation(platform("com.google.firebase:firebase-bom:32.2.0"))
     implementation("com.google.firebase:firebase-analytics-ktx")
     implementation("com.google.android.gms:play-services-maps:18.1.0")

@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/services/firestore_service.dart';
-import 'package:intl/intl.dart'; // Add to pubspec.yaml
+import 'package:stayhub/features/agent/agent_bank_page.dart';
+import 'package:intl/intl.dart'; 
 
 class AgentWalletPage extends StatefulWidget {
   const AgentWalletPage({super.key});
@@ -14,124 +15,25 @@ class AgentWalletPage extends StatefulWidget {
 class _AgentWalletPageState extends State<AgentWalletPage> {
   final _firestoreService = FirestoreService();
   final _auth = FirebaseAuth.instance;
-  final _currencyFormat = NumberFormat.currency(locale: 'en_GH', symbol: '₵');
-
-  // --- PAYOUT SHEET LOGIC ---
-  void _showPayoutSheet(double currentBalance) {
-    if (currentBalance <= 0) {
-      _showSnack("Insufficient balance for payout.", isError: true);
-      return;
-    }
-
-    final amountController = TextEditingController();
-    final detailsController = TextEditingController();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true, // Allows sheet to go full height if needed
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        height: MediaQuery.of(context).size.height * 0.75, // Take up 75% of screen
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
-        ),
-        padding: EdgeInsets.fromLTRB(24, 24, 24, MediaQuery.of(context).viewInsets.bottom + 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle bar
-            Center(child: Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)))),
-            const SizedBox(height: 24),
-
-            const Text("Request Withdrawal", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text("Available: ${_currencyFormat.format(currentBalance)}", style: TextStyle(color: Colors.grey[600])),
-
-            const SizedBox(height: 30),
-
-            // Amount Input
-            _buildSoftInput(amountController, "Amount (GHS)", Icons.attach_money, isNumber: true),
-
-            // Quick Chips
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                _buildQuickChip("₵100", amountController),
-                _buildQuickChip("50%", amountController, percentage: 0.5, balance: currentBalance),
-                _buildQuickChip("Max", amountController, percentage: 1.0, balance: currentBalance),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // Details Input
-            _buildSoftInput(detailsController, "Momo Number / Bank Details", Icons.account_balance),
-
-            const Spacer(),
-
-            // Action Button
-            SizedBox(
-              width: double.infinity,
-              height: 55,
-              child: ElevatedButton(
-                onPressed: () async {
-                  final amount = double.tryParse(amountController.text);
-                  final details = detailsController.text.trim();
-
-                  if (amount == null || amount <= 0 || amount > currentBalance) {
-                    _showSnack("Invalid amount.", isError: true);
-                    return;
-                  }
-                  if (details.isEmpty) {
-                    _showSnack("Please provide payment details.", isError: true);
-                    return;
-                  }
-
-                  Navigator.pop(context);
-
-                  // Execute Transaction
-                  final user = _auth.currentUser;
-                  if (user != null) {
-                    await _firestoreService.requestPayout(user.uid, amount, "MOMO", details);
-                    _showSnack("Payout request submitted!");
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A237E),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 5,
-                ),
-                child: const Text("Confirm Withdrawal", style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showSnack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg),
-      backgroundColor: isError ? Colors.redAccent : Colors.green,
-      behavior: SnackBarBehavior.floating,
-    ));
-  }
+  final _currencyFormat = NumberFormat.currency(symbol: 'GHS ', decimalDigits: 2);
 
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
     if (user == null) return const Center(child: Text("Please log in"));
 
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final bgColor = isDark ? const Color(0xFF121212) : Colors.grey[50];
+    final textColor = isDark ? Colors.white : Colors.black87;
+
     return Scaffold(
-      backgroundColor: Colors.grey[50],
+      backgroundColor: bgColor,
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const SizedBox(height: 20),
+             const SizedBox(height: 20),
             // 1. PREMIUM CREDIT CARD
             StreamBuilder<DocumentSnapshot>(
               stream: _firestoreService.getWalletBalance(user.uid),
@@ -139,10 +41,32 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
                 double balance = 0.0;
                 if (snapshot.hasData && snapshot.data!.exists) {
                   final data = snapshot.data!.data() as Map<String, dynamic>;
-                  final rawBal = data['walletBalance'];
-                  balance = (rawBal is String ? double.tryParse(rawBal) : (rawBal as num?)?.toDouble()) ?? 0.0;
+                  final rawBal = data['walletBalance']; // Note: field name in FirestoreService might be 'wallet_balance'
+                  // Checking FirestoreService.updateBookingStatus: 'wallet_balance'
+                  // Checking previous code: data['walletBalance']...
+                  // I should probably support both or verify which one used?
+                  // Step 716 code used 'walletBalance'. 
+                  // But FirestoreService Step 610 writes 'wallet_balance'. 
+                  // I'll check both to be safe, defaulting to 0.
+                  final val = data['wallet_balance'] ?? data['walletBalance'];
+                  balance = (val is String ? double.tryParse(val) : (val as num?)?.toDouble()) ?? 0.0;
                 }
-                return _buildCreditCard(balance);
+                return _buildCreditCard(balance, isDark);
+              },
+            ),
+            
+            const SizedBox(height: 16),
+
+            // 1.5. BANK LINK STATUS
+            StreamBuilder<DocumentSnapshot>(
+              stream: _firestoreService.getAgentProfile(user.uid),
+              builder: (context, snapshot) {
+                 bool isLinked = false;
+                 if (snapshot.hasData && snapshot.data!.exists) {
+                    final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
+                    isLinked = data['is_bank_verified'] == true;
+                 }
+                 return _buildBankLinkTile(isLinked, isDark);
               },
             ),
 
@@ -152,8 +76,8 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text("Recent Activity", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                Icon(Icons.filter_list, color: Colors.grey[400]),
+                Text("Recent Earnings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
+                Icon(Icons.history, color: isDark ? Colors.grey[400] : Colors.grey[400]),
               ],
             ),
             const SizedBox(height: 16),
@@ -168,7 +92,7 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
                   }
 
                   final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) return _buildEmptyState();
+                  if (docs.isEmpty) return _buildEmptyState(isDark);
 
                   return ListView.separated(
                     padding: const EdgeInsets.only(bottom: 20),
@@ -176,7 +100,7 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
                     itemCount: docs.length,
                     separatorBuilder: (_, __) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
-                      return _buildTransactionTile(docs[index].data() as Map<String, dynamic>);
+                      return _buildTransactionTile(docs[index].data() as Map<String, dynamic>, isDark);
                     },
                   );
                 },
@@ -190,7 +114,7 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
 
   // --- WIDGET COMPONENTS ---
 
-  Widget _buildCreditCard(double balance) {
+  Widget _buildCreditCard(double balance, bool isDark) {
     return Container(
       height: 220,
       width: double.infinity,
@@ -220,20 +144,33 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(color: Colors.yellowAccent.withOpacity(0.5)),
                 ),
-                child: const Icon(Icons.wifi, size: 16, color: Colors.black45), // NFC symbol lookalike
+                child: const Icon(Icons.credit_card, size: 16, color: Colors.black45), 
               ),
-              const Text("StayHub Agent", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
+              const Text("StayHub Earnings", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
             ],
           ),
 
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text("Total Balance", style: TextStyle(color: Colors.white60, fontSize: 12)),
+              Row(
+                children: [
+                  const Text("Total Earnings", style: TextStyle(color: Colors.white60, fontSize: 12)),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
+                    child: const Text("AUTO-PAID", style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
+                  )
+                ],
+              ),
               const SizedBox(height: 4),
-              Text(
-                _currencyFormat.format(balance),
-                style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  _currencyFormat.format(balance),
+                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                ),
               ),
             ],
           ),
@@ -241,25 +178,17 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text("**** **** 8291", style: TextStyle(color: Colors.white54, letterSpacing: 2)),
-              InkWell(
-                onTap: () => _showPayoutSheet(balance),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white30),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.arrow_upward_rounded, color: Colors.white, size: 16),
-                      SizedBox(width: 4),
-                      Text("Withdraw", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                ),
+              const Flexible(
+                 child: Text("**** BANK", style: TextStyle(color: Colors.white54, letterSpacing: 2), overflow: TextOverflow.ellipsis),
               ),
+              const SizedBox(width: 8),
+              Row(
+                children: const [
+                  Icon(Icons.check_circle, color: Colors.greenAccent, size: 16),
+                  SizedBox(width: 4),
+                  Text("Direct Deposit", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+                ],
+              )
             ],
           ),
         ],
@@ -267,24 +196,78 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
     );
   }
 
-  Widget _buildTransactionTile(Map<String, dynamic> data) {
+  Widget _buildBankLinkTile(bool isLinked, bool isDark) {
+    if (isLinked) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.green.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.green.withOpacity(0.3)),
+        ),
+        child: const Row(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green),
+            SizedBox(width: 10),
+            Expanded(child: Text("Bank Account Active on Paystack", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
+          ],
+        ),
+      );
+    }
+
+    return InkWell(
+      onTap: () {
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentBankPage()));
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: Colors.orange.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.warning_amber_rounded, color: Colors.orange),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Connect Bank Account", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
+                  Text("Link now to receive payments instantly.", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 12)),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.orange),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionTile(Map<String, dynamic> data, bool isDark) {
     // Logic for display
     final isExpense = data['type'] == 'payout' || data['type'] == 'expense';
     final rawAmt = data['amount'];
     final amount = (rawAmt is String ? double.tryParse(rawAmt) : (rawAmt as num?)?.toDouble()) ?? 0.0;
     final date = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
     final status = data['status'] ?? 'completed';
-    final isPending = status == 'pending';
-
+    // Payouts are now "Credits" to the agent's actual bank, so we treat them as Income records primarily.
+    // If we have 'type': 'credit', it's income.
+    
     // Formatting date
     final dateString = DateFormat('MMM d, h:mm a').format(date);
+    
+    final tileColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+    final titleColor = isDark ? Colors.white : Colors.black87;
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: tileColor,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 2))],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 10, offset: const Offset(0, 2))],
       ),
       child: Row(
         children: [
@@ -292,13 +275,10 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isExpense ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
+              color: Colors.green.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              isExpense ? Icons.north_east : Icons.south_west, // Arrow up/right for out, down/left for in
-              color: isExpense ? Colors.orange : Colors.green,
-            ),
+            child: const Icon(Icons.south_west, color: Colors.green), // Always incoming for earnings
           ),
           const SizedBox(width: 16),
 
@@ -307,89 +287,35 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(data['title'] ?? 'Transaction', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                Text(data['description'] ?? 'Earning', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
                 const SizedBox(height: 4),
                 Text(dateString, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
               ],
             ),
           ),
 
-          // Amount & Status
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                "${isExpense ? '-' : '+'} ${_currencyFormat.format(amount)}",
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                    color: isExpense ? Colors.black87 : Colors.green[700]
-                ),
-              ),
-              if (isPending)
-                Container(
-                  margin: const EdgeInsets.only(top: 4),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(color: Colors.amber[100], borderRadius: BorderRadius.circular(4)),
-                  child: Text("Processing", style: TextStyle(fontSize: 10, color: Colors.amber[900], fontWeight: FontWeight.bold)),
-                ),
-            ],
-          )
+          // Amount
+          Text(
+            "+ ${_currencyFormat.format(amount)}",
+            style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                color: Colors.green[700]
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildSoftInput(TextEditingController controller, String label, IconData icon, {bool isNumber = false}) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: TextField(
-        controller: controller,
-        keyboardType: isNumber ? const TextInputType.numberWithOptions(decimal: true) : TextInputType.text,
-        decoration: InputDecoration(
-          prefixIcon: Icon(icon, color: Colors.grey[600]),
-          labelText: label,
-          border: InputBorder.none,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildQuickChip(String label, TextEditingController controller, {double? percentage, double? balance}) {
-    return GestureDetector(
-      onTap: () {
-        if (percentage != null && balance != null) {
-          controller.text = (balance * percentage).toStringAsFixed(2);
-        } else {
-          // Hardcoded value for "100"
-          controller.text = "100";
-        }
-      },
-      child: Container(
-        margin: const EdgeInsets.only(right: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: Colors.blue[50],
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.blue.withOpacity(0.2)),
-        ),
-        child: Text(label, style: TextStyle(color: Colors.blue[800], fontWeight: FontWeight.bold)),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(bool isDark) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.receipt_long_rounded, size: 60, color: Colors.grey[300]),
+          Icon(Icons.account_balance_wallet, size: 60, color: isDark ? Colors.grey[700] : Colors.grey[300]),
           const SizedBox(height: 10),
-          Text("No transactions yet", style: TextStyle(color: Colors.grey[400])),
+          Text("No earnings yet", style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[400])),
         ],
       ),
     );

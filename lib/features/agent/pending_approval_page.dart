@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/auth/auth_page.dart';
 
 class PendingApprovalPage extends StatefulWidget {
@@ -43,10 +44,25 @@ class _PendingApprovalPageState extends State<PendingApprovalPage> with TickerPr
     }
   }
 
-  void _contactSupport() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Support email copied: support@stayhub.com")),
-    );
+  Future<void> _contactSupport() async {
+    String email = 'support@stayhub.com';
+    try {
+      final doc = await FirebaseFirestore.instance.collection('app_settings').doc('general').get();
+      final data = doc.data();
+      if (data != null) {
+        final agentSupport = data['agent_support'] as Map<String, dynamic>?;
+        if (agentSupport != null && agentSupport['email'] != null) {
+          email = agentSupport['email'];
+        }
+      }
+    } catch (_) {}
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Support email copied: $email")),
+      );
+    }
+    // Ideally copy to clipboard here too, but for now just showing it.
   }
 
   @override

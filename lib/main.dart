@@ -7,20 +7,30 @@ import 'package:stayhub/core/splash_screen.dart';
 import 'package:stayhub/firebase_options.dart';
 import 'package:stayhub/providers/locale_provider.dart';
 import 'package:stayhub/providers/theme_provider.dart';
+import 'package:stayhub/services/notification_service.dart'; // Added import
 import 'package:stayhub/services/payment_service.dart'; // Import PaymentService
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.presentError(details);
+    debugPrint("Global Error: ${details.exception}");
+  };
 
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+    await dotenv.load(fileName: ".env");
      PaymentService().initialize(); // Initialize Paystack
   } catch (e) {
-    debugPrint("Firebase Initialization Error: $e");
+    debugPrint("Firebase/Env Initialization Error: $e");
+    // Continue running, as some features might work offline
   }
 
+  await NotificationService().init(); // Initialize NotificationService
   runApp(const MyApp());
 }
 

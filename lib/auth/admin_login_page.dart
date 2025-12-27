@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:stayhub/features/agent/agent_dashboard.dart';
+import 'package:stayhub/features/admin/admin_dashboard.dart';
 
 class AdminLoginPage extends StatefulWidget {
   const AdminLoginPage({super.key});
@@ -35,7 +35,7 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
           if (mounted) {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const AgentDashboard()),
+              MaterialPageRoute(builder: (_) => const AdminDashboard()),
             );
           }
         } else {

@@ -21,6 +21,12 @@ class FirestoreService {
     return _db.collection('admins').doc(uid).snapshots();
   }
 
+  // Config
+  Future<Map<String, dynamic>> getAppConfig() async {
+    final doc = await _db.collection('app_settings').doc('general').get();
+    return doc.data() ?? {};
+  }
+
   // Also aliased as getUserData in some places
   Stream<DocumentSnapshot> getUserData(String uid) {
     return _db.collection('users').doc(uid).snapshots();
@@ -30,12 +36,16 @@ class FirestoreService {
     await _db.collection('users').doc(uid).set(data, SetOptions(merge: true));
   }
 
+  Future<void> updateAgentProfile(String uid, Map<String, dynamic> data) async {
+    await _db.collection('agents').doc(uid).set(data, SetOptions(merge: true));
+  }
+
   // ===========================================================================
   // 2. HOSTELS
   // ===========================================================================
 
   Stream<QuerySnapshot> getHostels() {
-    return _db.collection('hostels').orderBy('rating', descending: true).snapshots();
+    return _db.collection('hostels').snapshots();
   }
 
   Stream<QuerySnapshot> getFeaturedHostels() {
@@ -43,8 +53,10 @@ class FirestoreService {
   }
 
   Stream<QuerySnapshot> getAgentHostels(String agentId) {
-    return _db.collection('hostels').where('agentId', isEqualTo: agentId).snapshots();
-  }
+  return _db.collection('hostels')
+      .where('agentId', isEqualTo: agentId)
+      .snapshots();
+}
 
   Future<void> addHostel(Map<String, dynamic> hostelData) async {
     await _db.collection('hostels').add(hostelData);
@@ -117,8 +129,9 @@ class FirestoreService {
 
        transaction.update(bookingRef, {'status': status});
        
-       // Handle Commission / Payout on Approval
-       if (status == 'CONFIRMED') {
+       // Handle Commission / Payout only when PAID
+       // Fixed Logic: Wallet increments only when Student actually pays.
+       if (status == 'PAID') {
           final data = bookingSnapshot.data() as Map<String, dynamic>;
           final agentId = data['agentId'];
           final double agentEarnings = (data['agentPrice'] as num?)?.toDouble() ?? 0.0;
@@ -145,13 +158,35 @@ class FirestoreService {
     });
     
     // Create a notification for the user
-    await createNotification(
-      userId, 
-      "Booking Update", 
-      status == 'CONFIRMED' 
-          ? "Your booking has been APPROVED!" 
-          : "Your booking was updated to: $status"
-    );
+    String notifBody = "Your booking was updated to: $status";
+    if (status == 'CONFIRMED') notifBody = "Your booking has been APPROVED! You can now proceed to payment.";
+    if (status == 'PAID') notifBody = "Payment received! Your booking is confirmed.";
+
+    await createNotification(userId, "Booking Update", notifBody);
+  }
+
+  // ===========================================================================
+  // 5.5. ADMIN SETTINGS
+  // ===========================================================================
+
+  Future<double> getGlobalCommission() async {
+    try {
+      final doc = await _db.collection('settings').doc('commission').get();
+      if (doc.exists) {
+        // Warning: Field name is 'percent' but value is now Fixed Amount (GHS).
+        return (doc.data()?['platform_fee_percent'] as num?)?.toDouble() ?? 50.0;
+      }
+    } catch (e) {
+      print("Error fetching commission: $e");
+    }
+    return 50.0; // Default 50 GHS
+  }
+
+  Future<void> setGlobalCommission(double amount) async {
+    await _db.collection('settings').doc('commission').set({
+      'platform_fee_percent': amount, // Storing fixed amount in legacy field name
+      'updated_at': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
   }
 
   // ===========================================================================

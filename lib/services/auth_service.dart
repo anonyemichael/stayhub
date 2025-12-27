@@ -70,8 +70,9 @@ class AuthService {
       final userCredential = await _auth.signInWithCredential(credential);
       return userCredential.user;
     } catch (e) {
-      // Simplified error message for the UI
-      throw Exception("Google Sign-In failed. Please try again.");
+      print("Error during Google Sign-In: $e");
+      // Include the actual error in the exception for debugging
+      throw Exception("Google Sign-In failed: $e");
     }
   }
 

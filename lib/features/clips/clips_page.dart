@@ -49,12 +49,29 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
     }
   }
 
+  /*
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
     for (var controller in _controllers.values) {
       controller.dispose();
+    }
+    super.dispose();
+  }
+  */
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pageController.dispose();
+    // Safely dispose controllers
+    try {
+      for (var controller in _controllers.values) {
+        controller.dispose();
+      }
+    } catch (e) {
+      debugPrint("Error disposing controllers: $e");
     }
     super.dispose();
   }
@@ -83,9 +100,13 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
   }
 
   void _playCurrent() {
+    if (!mounted) return;
     // Only play if active and controller exists
     if (widget.isActive && _isAppActive && _controllers.containsKey(_currentIndex)) {
-      _controllers[_currentIndex]?.play();
+      final controller = _controllers[_currentIndex];
+      if (controller != null && controller.value.isInitialized) {
+         controller.play();
+      }
     }
   }
 

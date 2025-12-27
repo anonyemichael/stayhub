@@ -28,46 +28,79 @@ class PrivacyPage extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              "Last Updated: October 2023",
+              "Last Updated: December 26, 2025",
               style: TextStyle(color: Colors.grey, fontSize: 12),
             ),
             const SizedBox(height: 20),
-            _buildSectionTitle("1. Introduction", textColor),
+            
             _buildParagraph(
-              "Welcome to StayHub. We are committed to protecting your personal information and your right to privacy. If you have any questions or concerns about our policy, or our practices with regards to your personal information, please contact us.",
+              "At StayHub, we value your trust and are committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our mobile application.",
               textColor,
             ),
-            _buildSectionTitle("2. Information We Collect", textColor),
+
+            _buildSectionTitle("1. Information We Collect", textColor),
             _buildParagraph(
-              "We collect personal information that you voluntarily provide to us when you register on the App, express an interest in obtaining information about us or our products and services, when you participate in activities on the App or otherwise when you contact us.",
+              "We collect information that identifies you personally mostly when you voluntarily provide it to us during registration or booking.",
               textColor,
             ),
             _buildList(
               [
-                "Name and Contact Data (Email, Phone Number)",
-                "Credentials (Passwords, Security information)",
-                "Payment Data (Processed securely by our payment processors)",
+                "Personal Data: Name, email address, phone number, and profile picture.",
+                "Student Identity: Institution name, student ID (for verification), and gender (for room allocation).",
+                "Financial Data: Transaction history. Note that we do not store sensitive card details; these are handled by our payment partners (e.g., Paystack).",
+                "Device and Location Data: IP address, device type, and location data to help you find hostels near you.",
               ],
               textColor,
             ),
-            _buildSectionTitle("3. How We Use Your Information", textColor),
+
+            _buildSectionTitle("2. How We Use Your Information", textColor),
             _buildParagraph(
-              "We use personal information collected via our App for a variety of business purposes described below. We process your personal information for these purposes in reliance on our legitimate business interests, in order to enter into or perform a contract with you, with your consent, and/or for compliance with our legal obligations.",
+              "We use the data we collect to provide and improve our services, specifically to:",
               textColor,
             ),
             _buildList(
               [
-                "To facilitate account creation and logon process.",
-                "To send you marketing and promotional communications.",
-                "To fulfill and manage your orders and bookings.",
+                "Process your hostel bookings and payments.",
+                "Verify your student status for safety and security.",
+                "Facilitate communication between you and Hostel Agents via our in-app chat.",
+                "Send you booking confirmations, updates, and support messages.",
+                "Improve app performance and user experience.",
               ],
               textColor,
             ),
-            _buildSectionTitle("4. Sharing Your Information", textColor),
+
+            _buildSectionTitle("3. Sharing Your Information", textColor),
             _buildParagraph(
-              "We only share information with your consent, to comply with laws, to provide you with services, to protect your rights, or to fulfill business obligations.",
+              "We do not sell your personal data. However, we may share identifying information with specific third parties essential to the service:",
               textColor,
             ),
+            _buildList(
+              [
+                "Hostel Managers & Agents: When you book a request, your name, gender, and contact details are shared with the respective Agent to facilitate your move-in.",
+                "Service Providers: Secure payment gateways and cloud hosting services.",
+                "Legal Requirements: If required by law or to protect the rights and safety of our users.",
+              ],
+              textColor,
+            ),
+
+            _buildSectionTitle("4. Data Security", textColor),
+            _buildParagraph(
+              "We implement administrative, technical, and physical security measures to protect your personal information. While we strive to use commercially acceptable means to protect your data, no method of transmission over the Internet is 100% secure.",
+              textColor,
+            ),
+
+            _buildSectionTitle("5. Your Rights", textColor),
+            _buildParagraph(
+              "You have the right to access, update, or delete the information we have on you. You can edit your profile directly within the app. To request full account deletion, please contact our support team or use the delete option in Settings.",
+              textColor,
+            ),
+
+            _buildSectionTitle("6. Contact Us", textColor),
+            _buildParagraph(
+              "If you have questions about this Privacy Policy, please contact us at support@stayhub.app or via the in-app Help Center.",
+              textColor,
+            ),
+            
             const SizedBox(height: 40),
           ],
         ),

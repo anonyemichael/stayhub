@@ -45,6 +45,7 @@ dependencies:
   url_launcher: ^6.2.1
   package_info_plus: ^8.0.0
   shared_preferences: ^2.2.3 # Added for caching
+  timeago: ^3.6.1
 
   # --- MAPS ---
   google_maps_flutter: ^2.5.0
@@ -53,11 +54,17 @@ dependencies:
   fl_chart: ^1.1.1
   uuid: ^4.5.2
   share_plus: ^10.0.0
-  flutter_paystack_plus: ^1.0.9
   mobile_scanner: ^7.1.4
   qr_flutter: ^4.1.0
   flutter_cache_manager: ^3.4.1
   location: ^7.0.0
+  google_nav_bar: ^5.0.7
+  line_icons: ^2.0.3
+  http: ^1.6.0
+  webview_flutter: ^4.13.0
+  flutter_local_notifications: ^19.5.0
+  flutter_dotenv: ^5.1.0
+  shimmer: ^3.0.0
 
 dependency_overrides:
   intl: any
@@ -75,6 +82,8 @@ flutter:
   assets:
     - assets/logo/
     - assets/images/
+    - assets/map_style_dark.json
+    - .env
 
 flutter_native_splash:
   color: "#0F2027"

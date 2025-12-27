@@ -2,6 +2,7 @@ import 'dart:ui'; // For Glassmorphism blur
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For HapticFeedback
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/features/home/home_page.dart';
 import 'package:stayhub/features/clips/clips_page.dart';
 import 'package:stayhub/features/map/map_page.dart';
@@ -17,6 +18,45 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAnnouncements();
+  }
+
+  Future<void> _checkAnnouncements() async {
+    // Simple check for recent critical announcements (last 24 hours)
+    // In a real app, track 'lastSeenAnnouncement' in SharedPreferences
+    try {
+      final now = DateTime.now();
+      final yesterday = now.subtract(const Duration(hours: 24));
+      
+      final query = await FirebaseFirestore.instance.collection('announcements')
+          .where('isActive', isEqualTo: true)
+          .where('createdAt', isGreaterThan: Timestamp.fromDate(yesterday))
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty && mounted) {
+        final data = query.docs.first.data();
+        final title = data['title'] ?? 'Announcement';
+        final body = data['body'] ?? '';
+        
+        // Show Dialog
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Row(children: [const Icon(Icons.campaign, color: Colors.orange), const SizedBox(width: 10), Text(title)]),
+            content: Text(body),
+            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Got it"))],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint("Announcement check failed: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

@@ -18,7 +18,7 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
   final FirestoreService _firestoreService = FirestoreService();
 
   // WhatsApp Configuration
-  final String _whatsappNumber = "233509483401";
+  // final String _whatsappNumber = "233509483401"; // Deprecated, fetched from DB now.
 
   // Animations
   late AnimationController _bgController;
@@ -50,9 +50,42 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
 
   // --- ACTIONS ---
 
+  // --- ACTIONS ---
+
+  // --- ACTIONS ---
+
   Future<void> _launchWhatsApp() async {
-    HapticFeedback.heavyImpact(); // Strong feedback for main action
-    final Uri url = Uri.parse("https://wa.me/$_whatsappNumber?text=${Uri.encodeComponent('Hello StayHub, I need help with...')}");
+    HapticFeedback.heavyImpact(); 
+    
+    String number = ""; 
+
+    try {
+      _showSnack("Fetching contact info..."); // DEBUG: Let user know we are trying
+      
+      // Force fetch from server to avoid stale cache
+      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get(const GetOptions(source: Source.server));
+      
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        final studentSupport = data['student_support'] as Map<String, dynamic>?;
+        
+        if (studentSupport != null && studentSupport['whatsapp'] != null && studentSupport['whatsapp'].toString().isNotEmpty) {
+           number = studentSupport['whatsapp'];
+           _showSnack("Found contact: $number"); // DEBUG: Show user what we found
+        }
+      } else {
+        _showSnack("Config not found on server", isError: true);
+      }
+    } catch (e) {
+      _showSnack("Fetch Error: $e", isError: true); 
+    }
+
+    if (number.isEmpty) {
+       _showSnack("No WhatsApp number configured", isError: true);
+       return;
+    }
+
+    final Uri url = Uri.parse("https://wa.me/$number?text=${Uri.encodeComponent('Hello StayHub, I need help with...')}");
     try {
       if (await canLaunchUrl(url)) {
         await launchUrl(url, mode: LaunchMode.externalApplication);
@@ -66,8 +99,50 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
 
   Future<void> _launchEmail() async {
     HapticFeedback.lightImpact();
-    final Uri url = Uri(scheme: 'mailto', path: 'support@stayhub.app');
+    
+    String email = 'support@stayhub.app';
+     try {
+      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        final studentSupport = data['student_support'] as Map<String, dynamic>?;
+        
+        if (studentSupport != null && studentSupport['email'] != null && studentSupport['email'].toString().isNotEmpty) {
+           email = studentSupport['email'];
+        }
+      }
+    } catch (e) {
+      // Fallback
+    }
+
+    final Uri url = Uri(scheme: 'mailto', path: email);
     if (await canLaunchUrl(url)) await launchUrl(url);
+  }
+
+  Future<void> _launchCall() async {
+    HapticFeedback.heavyImpact();
+    
+    String number = "";
+    try {
+      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        // Use 'admin_contact' phone or 'student_support' whatsapp as fallback
+        final admin = data['admin_contact'] as Map<String, dynamic>?;
+        final student = data['student_support'] as Map<String, dynamic>?;
+        
+        number = admin?['phone'] ?? student?['whatsapp'] ?? "";
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    if (number.isNotEmpty) {
+      final Uri url = Uri.parse("tel:$number");
+      if (await canLaunchUrl(url)) await launchUrl(url);
+    } else {
+      _showSnack("No hotline available", isError: true);
+    }
   }
 
   void _showSnack(String msg, {bool isError = false}) {
@@ -226,7 +301,7 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
                           children: [
                             Expanded(child: _buildSecondaryAction("Email Support", Icons.mail_outline, Colors.purpleAccent, _launchEmail)),
                             const SizedBox(width: 16),
-                            Expanded(child: _buildSecondaryAction("Live Agent", Icons.headset_mic_outlined, Colors.blueAccent, () => _showSnack("Connecting..."))),
+                            Expanded(child: _buildSecondaryAction("Live Agent", Icons.headset_mic_outlined, Colors.blueAccent, _launchCall)),
                           ],
                         )),
 

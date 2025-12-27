@@ -7,17 +7,17 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:33041190550:android:77641061ef371a3d963cb7",
+        "mobilesdk_app_id": "1:33041190550:android:09835634d5b91506963cb7",
         "android_client_info": {
-          "package_name": "com.example.stayhub.stayhub"
+          "package_name": "com.stayhub.app"
         }
       },
       "oauth_client": [
         {
-          "client_id": "33041190550-vt1mjs5b97f66auv4u7vgl1pk9ntr21j.apps.googleusercontent.com",
+          "client_id": "33041190550-fnjqg7c0qj9pr5ebba4g2vgh0hqrm79v.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
-            "package_name": "com.example.stayhub.stayhub",
+            "package_name": "com.stayhub.app",
             "certificate_hash": "8cfefaff36a5c710d40dee65b2065cfc2ec86531"
           }
         },
@@ -28,7 +28,7 @@
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyC-4FI84mCzrlhXBU-dxDFrz02TOyGU_Iw"
+          "current_key": "AIzaSyC90HtFwSY72NjlFASlW5X8efpZnfGOSZ4"
         }
       ],
       "services": {

@@ -16,9 +16,10 @@ class Booking {
   final String imageUrl;
   final DateTime checkIn;
   final DateTime checkOut;
-  final String status; // 'CONFIRMED', 'COMPLETED', 'CANCELLED'
+  final String status; // 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'PAID'
   final double price;
   final String agentId;
+  final double platformFee; // New: For fixed commission logic
 
   Booking({
     required this.id,
@@ -30,6 +31,7 @@ class Booking {
     required this.status,
     required this.price,
     required this.agentId,
+    this.platformFee = 50.0, // Default fallback
   });
 
   factory Booking.fromFirestore(DocumentSnapshot doc) {
@@ -44,6 +46,7 @@ class Booking {
       status: data['status'] ?? 'CONFIRMED',
       price: (data['price'] as num?)?.toDouble() ?? 0.0,
       agentId: data['agentId'] ?? '',
+      platformFee: (data['platformFee'] as num?)?.toDouble() ?? 50.0,
     );
   }
 }
@@ -169,8 +172,8 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
 
   Widget _buildBookingList(List<Booking> allBookings, String type, bool isDark) {
     final filtered = type == 'Upcoming'
-        ? allBookings.where((b) => b.status == 'CONFIRMED').toList()
-        : allBookings.where((b) => b.status != 'CONFIRMED').toList();
+        ? allBookings.where((b) => b.status == 'CONFIRMED' || b.status == 'PAID' || b.status == 'CHECKED_IN').toList()
+        : allBookings.where((b) => b.status == 'COMPLETED' || b.status == 'CANCELLED').toList();
 
     if (filtered.isEmpty) {
       return Center(
@@ -202,7 +205,8 @@ class TicketCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isUpcoming = booking.status == 'CONFIRMED';
+    final isUpcoming = booking.status == 'CONFIRMED' || booking.status == 'PAID';
+    final isCheckedIn = booking.status == 'CHECKED_IN';
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
@@ -240,10 +244,21 @@ class TicketCard extends StatelessWidget {
                     filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      color: isUpcoming ? Colors.green.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.3),
+                      color: isCheckedIn ? Colors.blue.withValues(alpha: 0.6) : (isUpcoming ? Colors.green.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.3)),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
-                        children: [Icon(isUpcoming ? Icons.check_circle : Icons.history, color: Colors.white, size: 14), const SizedBox(width: 6), Text(booking.status, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12))],
+                        children: [
+                          Icon(
+                            isCheckedIn ? Icons.verified : (isUpcoming ? Icons.check_circle : Icons.history), 
+                            color: Colors.white, 
+                            size: 14
+                          ), 
+                          const SizedBox(width: 6), 
+                          Text(
+                            isCheckedIn ? "ACTIVE STAY" : booking.status, // Display "ACTIVE STAY" instead of raw status
+                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)
+                          )
+                        ],
                       ),
                     ),
                   ),
@@ -252,11 +267,35 @@ class TicketCard extends StatelessWidget {
               Positioned(
                 bottom: 16,
                 left: 16,
+                right: 16, // Constrain width
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(booking.hostelName, style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, shadows: [Shadow(color: Colors.black54, blurRadius: 10)])),
-                    Row(children: [const Icon(Icons.location_on, color: Colors.white70, size: 14), const SizedBox(width: 4), Text(booking.location, style: const TextStyle(color: Colors.white70, fontSize: 13))]),
+                    Text(
+                      booking.hostelName, 
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white, 
+                        fontSize: 22, 
+                        fontWeight: FontWeight.bold, 
+                        shadows: [Shadow(color: Colors.black54, blurRadius: 10)]
+                      )
+                    ),
+                    Row(
+                      children: [
+                        const Icon(Icons.location_on, color: Colors.white70, size: 14), 
+                        const SizedBox(width: 4), 
+                        Expanded(
+                          child: Text(
+                            booking.location, 
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: Colors.white70, fontSize: 13)
+                          ),
+                        )
+                      ]
+                    ),
                   ],
                 ),
               ),
@@ -276,13 +315,20 @@ class TicketCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text("Total Price", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                        const SizedBox(height: 4),
-                        Text("GHS ${booking.price.toStringAsFixed(0)}", style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.blue[200] : Colors.blue.shade900))
-                      ],
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text("Total Price", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                          const SizedBox(height: 4),
+                          Text(
+                            "GHS ${booking.price.toStringAsFixed(0)}", 
+                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.blue[200] : Colors.blue.shade900),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        ],
+                      ),
                     ),
                     if (booking.status == 'CONFIRMED')
                        ElevatedButton.icon(
@@ -290,12 +336,39 @@ class TicketCard extends StatelessWidget {
                            final email = FirebaseAuth.instance.currentUser?.email ?? "student@stayhub.com";
                            final ref = "REF-${DateTime.now().millisecondsSinceEpoch}";
                            
-                           final reference = await PaymentService().chargeCard(
-                             context: context, 
-                             amount: booking.price, 
-                             email: email, 
-                             reference: ref
-                           );
+                           // Check for Agent Subaccount (Split Payment)
+                           String? subAccountCode;
+                           if (booking.agentId.isNotEmpty) {
+                             try {
+                               final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(booking.agentId).get();
+                               if (agentDoc.exists) {
+                                 subAccountCode = agentDoc.data()?['paystack_subaccount_code'];
+                               }
+                             } catch (e) {
+                               debugPrint("Error fetching agent subaccount: $e");
+                             }
+                           }
+
+                           String? reference;
+                           if (subAccountCode != null && subAccountCode.isNotEmpty) {
+                              // USE SPLIT PAYMENT with Fixed Commission
+                              reference = await PaymentService().chargeCardWithSplit(
+                                context: context, 
+                                amount: booking.price, 
+                                email: email, 
+                                reference: ref,
+                                subAccountCode: subAccountCode,
+                                transactionCharge: booking.platformFee, // Passed here
+                              );
+                           } else {
+                              // USE STANDARD PAYMENT (Platform keeps all)
+                              reference = await PaymentService().chargeCard(
+                                context: context, 
+                                amount: booking.price, 
+                                email: email, 
+                                reference: ref
+                              );
+                           }
 
                            if (reference != null) {
                              // Success!
@@ -323,6 +396,13 @@ class TicketCard extends StatelessWidget {
                         onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookingDetailsPage(booking: booking))),
                         style: ElevatedButton.styleFrom(backgroundColor: isDark ? Colors.grey[800] : Colors.black, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 5),
                         child: const Text("View Ticket", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                      )
+                    else if (booking.status == 'CHECKED_IN')
+                      ElevatedButton.icon(
+                        onPressed: () {}, // No action needed or maybe show "Room Details"
+                        icon: const Icon(Icons.home, size: 16),
+                        label: const Text("My Room"),
+                        style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)), elevation: 5),
                       )
                     else
                       OutlinedButton(onPressed: () {}, style: OutlinedButton.styleFrom(side: BorderSide(color: isDark ? Colors.grey[700]! : Colors.grey.shade300), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: Text("Book Again", style: TextStyle(color: textColor))),
@@ -400,27 +480,19 @@ class TicketCard extends StatelessWidget {
         'users': [currentUser.uid, agentId],
         'lastMessage': '',
         'lastMessageTime': FieldValue.serverTimestamp(),
-        // New Metadata for better UI context
         'hostelName': booking.hostelName,
         'studentName': currentUser.displayName ?? 'Student',
-        'hostelId': booking.hostelName, // Using name as ID if actual ID not available easily here, but usually safer to store real ID.
-        // Actually, we don't have hostelId in Booking model? Let's check. 
-        // We don't have hostelId explicitly in local model but we might need it. 
-        // For now, hostelName is the critical request.
+        'hostelId': booking.hostelName, 
       });
       chatId = newChat.id;
     } else {
-       // Optional: Update metadata if it's missing (legacy chats)
        await chatsRef.doc(chatId).set({
-         'hostelName': booking.hostelName, // Ensure hostel name is always fresh
+         'hostelName': booking.hostelName, 
          'studentName': currentUser.displayName ?? 'Student',
        }, SetOptions(merge: true));
     }
 
     if (context.mounted) {
-       // For Student: Title is Agent Name (or Hostel Name if preferred?)
-       // User asked: "use hostel names as agent names" for students.
-       // So we pass hostelName as the title for the Chat Page.
        Navigator.push(context, MaterialPageRoute(builder: (_) => 
          ChatPage(chatId: chatId!, otherUserId: agentId, otherUserName: booking.hostelName) 
        ));

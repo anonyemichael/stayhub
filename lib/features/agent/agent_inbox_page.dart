@@ -102,21 +102,96 @@ class AgentInboxPage extends StatelessWidget {
                   final time = (chatData['lastMessageTime'] as Timestamp?)?.toDate();
                   final timeString = time != null ? DateFormat('MMM d, h:mm a').format(time) : "";
 
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
-                      child: photoUrl == null ? const Icon(Icons.person) : null,
+                  return Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        )
+                      ],
                     ),
-                    title: Text(displayTitle, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text("$subtitlePrefix$lastMsg", maxLines: 1, overflow: TextOverflow.ellipsis),
-                    trailing: Text(timeString, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
-                    onTap: () {
-                      Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
-                        chatId: docs[index].id,
-                        otherUserId: otherUserId,
-                        otherUserName: displayTitle,
-                      )));
-                    },
+                    child: Material(
+                      color: Colors.transparent,
+                      borderRadius: BorderRadius.circular(16),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(16),
+                        onTap: () {
+                          Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
+                            chatId: docs[index].id,
+                            otherUserId: otherUserId,
+                            otherUserName: displayTitle,
+                          )));
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
+                            children: [
+                              Stack(
+                                children: [
+                                  CircleAvatar(
+                                    radius: 28,
+                                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
+                                    backgroundColor: Colors.blueAccent.withOpacity(0.1),
+                                    child: photoUrl == null ? const Icon(Icons.person, color: Colors.blueAccent) : null,
+                                  ),
+                                  // Online Indicator (Mock)
+                                  Positioned(
+                                    bottom: 0,
+                                    right: 0,
+                                    child: Container(
+                                      width: 14, height: 14,
+                                      decoration: BoxDecoration(
+                                        color: Colors.green,
+                                        shape: BoxShape.circle,
+                                        border: Border.all(color: Theme.of(context).cardColor, width: 2),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(width: 16),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            displayTitle, 
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                            maxLines: 1, 
+                                            overflow: TextOverflow.ellipsis
+                                          ),
+                                        ),
+                                        if (timeString.isNotEmpty)
+                                          Text(
+                                            timeString, 
+                                            style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.w500)
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      "$subtitlePrefix$lastMsg", 
+                                      maxLines: 1, 
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
                   );
                 },
               );

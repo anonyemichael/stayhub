@@ -155,76 +155,148 @@ class _ChatPageState extends State<ChatPage> {
                         final time = (data['timestamp'] as Timestamp?)?.toDate();
                         final type = data['type'] ?? 'text';
                         final imageUrl = data['imageUrl'];
+                        
+                        // Date Logic
+                        bool showDateHeader = false;
+                        if (index == docs.length - 1) {
+                          showDateHeader = true; // Always show for oldest message
+                        } else {
+                          final prevData = docs[index + 1].data() as Map<String, dynamic>; // Older message
+                          final prevTime = (prevData['timestamp'] as Timestamp?)?.toDate();
+                          if (time != null && prevTime != null && !_isSameDay(time, prevTime)) {
+                            showDateHeader = true;
+                          }
+                        }
 
-                        return Align(
-                          alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                          child: Container(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            padding: type == 'text' ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : const EdgeInsets.all(4),
-                            constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
-                            decoration: BoxDecoration(
-                              gradient: isMe 
-                                  ? const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4F46E5)]) // Indigo Gradient
-                                  : LinearGradient(colors: isDark ? [const Color(0xFF1F2937), const Color(0xFF1F2937)] : [Colors.white, Colors.white]),
-                              color: isMe ? null : (isDark ? const Color(0xFF1F2937) : Colors.white),
-                              borderRadius: BorderRadius.only(
-                                topLeft: const Radius.circular(20),
-                                topRight: const Radius.circular(20),
-                                bottomLeft: isMe ? const Radius.circular(20) : const Radius.circular(4),
-                                bottomRight: isMe ? const Radius.circular(4) : const Radius.circular(20),
+                        // Grouping Logic (for bubble shape)
+                        bool isFirstInSequence = false; // Physically top of group (Oldest of sequence)
+                        bool isLastInSequence = false; // Physically bottom of group (Newest of sequence) (Index 0 is newest)
+                        
+                        // Check Next (Index + 1, Older) -> Determine if I am "First"
+                        if (index == docs.length - 1) {
+                           isFirstInSequence = true;
+                        } else {
+                           final prevData = docs[index + 1].data() as Map<String, dynamic>;
+                           if (prevData['senderId'] != data['senderId']) isFirstInSequence = true;
+                           if (showDateHeader) isFirstInSequence = true; // New day breaks sequence
+                        }
+
+                        // Check Previous (Index - 1, Newer) -> Determine if I am "Last"
+                        if (index == 0) {
+                           isLastInSequence = true;
+                        } else {
+                           final nextData = docs[index - 1].data() as Map<String, dynamic>;
+                           if (nextData['senderId'] != data['senderId']) isLastInSequence = true;
+                           // Note: Date header logic for next message doesn't affect MY bottom shape, 
+                           // but if next message HAS a date header, it visually breaks anyway.
+                           // Actually, if index-1 has a date header, it means index-1 is start of new day.
+                           // So index is end of old day.
+                           final nextTime = (nextData['timestamp'] as Timestamp?)?.toDate();
+                           if (nextTime != null && time != null && !_isSameDay(nextTime, time)) isLastInSequence = true; 
+                        }
+
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (showDateHeader && time != null)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: 24),
+                                child: Text(
+                                  _formatDate(time),
+                                  style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold),
+                                ),
                               ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withValues(alpha: 0.05),
-                                  blurRadius: 5,
-                                  offset: const Offset(0, 2),
-                                )
-                              ],
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (type == 'image' && imageUrl != null)
-                                  GestureDetector(
-                                    onTap: () => _showFullImage(context, imageUrl),
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: Hero(
-                                        tag: imageUrl,
-                                        child: CachedNetworkImage(
-                                          imageUrl: imageUrl,
-                                          placeholder: (context, url) => Container(height: 200, width: 200, color: Colors.black12, child: const Center(child: CircularProgressIndicator())),
-                                          errorWidget: (context, url, err) => const Icon(Icons.broken_image),
-                                          fit: BoxFit.cover,
+
+                            Align(
+                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  // Avatar for Other User (Only show at bottom of sequence)
+                                  if (!isMe)
+                                    Container(
+                                      width: 28, 
+                                      margin: const EdgeInsets.only(right: 8),
+                                      child: isLastInSequence 
+                                        ? const CircleAvatar(radius: 14, backgroundImage: AssetImage('assets/placeholder_avatar.png'), child: Icon(Icons.person, size: 16)) // Replace with user image if available passing it down
+                                        : const SizedBox.shrink(),
+                                    ),
+                                  
+                                  Flexible(
+                                    child: Container(
+                                      margin: EdgeInsets.only(bottom: isLastInSequence ? 12 : 2),
+                                      padding: type == 'text' ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : const EdgeInsets.all(4),
+                                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
+                                      decoration: BoxDecoration(
+                                        gradient: isMe 
+                                            ? const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4F46E5)]) 
+                                            : LinearGradient(colors: isDark ? [const Color(0xFF2D3748), const Color(0xFF2D3748)] : [Colors.white, Colors.white]),
+                                        color: isMe ? null : (isDark ? const Color(0xFF2D3748) : Colors.white),
+                                        borderRadius: BorderRadius.only(
+                                          topLeft: const Radius.circular(18),
+                                          topRight: const Radius.circular(18),
+                                          bottomLeft: isMe ? const Radius.circular(18) : (isLastInSequence ? const Radius.circular(4) : const Radius.circular(18)),
+                                          bottomRight: isMe ? (isLastInSequence ? const Radius.circular(4) : const Radius.circular(18)) : const Radius.circular(18),
                                         ),
+                                        boxShadow: [
+                                          if (!isMe && isDark) const BoxShadow(color: Colors.transparent) // No shadow for dark mode bubbles
+                                          else BoxShadow(
+                                            color: Colors.black.withOpacity(0.05),
+                                            blurRadius: 5,
+                                            offset: const Offset(0, 2),
+                                          )
+                                        ],
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (type == 'image' && imageUrl != null)
+                                            GestureDetector(
+                                              onTap: () => _showFullImage(context, imageUrl),
+                                              child: ClipRRect(
+                                                borderRadius: BorderRadius.circular(14),
+                                                child: Hero(
+                                                  tag: imageUrl,
+                                                  child: CachedNetworkImage(
+                                                    imageUrl: imageUrl,
+                                                    placeholder: (context, url) => Container(height: 150, width: 150, color: Colors.black12, child: const Center(child: CircularProgressIndicator())),
+                                                    errorWidget: (context, url, err) => const Icon(Icons.broken_image),
+                                                    fit: BoxFit.cover,
+                                                  ),
+                                                ),
+                                              ),
+                                            )
+                                          else
+                                            Text(
+                                              data['text'] ?? '',
+                                              style: TextStyle(
+                                                  color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                                                  fontSize: 16,
+                                              ),
+                                            ),
+                                          if (time != null && isLastInSequence) ...[
+                                            const SizedBox(height: 4),
+                                            Align(
+                                              alignment: Alignment.bottomRight,
+                                              child: Text(
+                                                DateFormat('h:mm a').format(time),
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  color: isMe ? Colors.white.withOpacity(0.7) : Colors.grey,
+                                                ),
+                                              ),
+                                            ),
+                                          ]
+                                        ],
                                       ),
                                     ),
-                                  )
-                                else
-                                  Text(
-                                    data['text'] ?? '',
-                                    style: TextStyle(
-                                        color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
-                                        fontSize: 16,
-                                    ),
                                   ),
-                                if (time != null) ...[
-                                  const SizedBox(height: 4),
-                                  Align(
-                                    alignment: Alignment.bottomRight,
-                                    child: Text(
-                                      DateFormat('h:mm a').format(time),
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: isMe ? Colors.white.withValues(alpha: 0.7) : Colors.grey,
-                                      ),
-                                    ),
-                                  ),
-                                ]
-                              ],
+                                ],
+                              ),
                             ),
-                          ),
+                          ],
                         );
                       },
                     );
@@ -297,6 +369,25 @@ class _ChatPageState extends State<ChatPage> {
         ],
       ),
     );
+  }
+
+  bool _isSameDay(DateTime date1, DateTime date2) {
+    return date1.year == date2.year && date1.month == date2.month && date1.day == date2.day;
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final dateToCheck = DateTime(date.year, date.month, date.day);
+
+    if (dateToCheck == today) {
+      return "Today";
+    } else if (dateToCheck == yesterday) {
+      return "Yesterday";
+    } else {
+      return DateFormat('MMMM d, y').format(date);
+    }
   }
 
   void _showFullImage(BuildContext context, String url) {

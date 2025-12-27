@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:stayhub/core/main.dart';
+import 'package:stayhub/main.dart';
 import 'package:stayhub/core/splash_screen.dart';
 import 'package:stayhub/auth/auth_page.dart';
 

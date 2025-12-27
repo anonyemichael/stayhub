@@ -2,17 +2,149 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:stayhub/features/bookings/bookings_page.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'dart:ui' as ui;
+import 'dart:io';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
-class BookingDetailsPage extends StatelessWidget {
+class BookingDetailsPage extends StatefulWidget {
   final Booking booking;
 
   const BookingDetailsPage({super.key, required this.booking});
 
   @override
+  State<BookingDetailsPage> createState() => _BookingDetailsPageState();
+}
+
+class _BookingDetailsPageState extends State<BookingDetailsPage> {
+  final GlobalKey _ticketKey = GlobalKey();
+  bool _isSaving = false;
+  bool _isCancelling = false;
+
+  Future<void> _captureAndSaveTicket() async {
+    setState(() => _isSaving = true);
+    try {
+      // 1. Wait for end of frame to ensure painting is done
+      await Future.delayed(const Duration(milliseconds: 20));
+
+      RenderRepaintBoundary? boundary = _ticketKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      if (boundary == null) {
+        throw Exception("Could not find ticket boundary. Scroll to view ticket.");
+      }
+
+      // 2. Capture Image (Use 2.0 for better performance/compatibility)
+      ui.Image image = await boundary.toImage(pixelRatio: 2.0);
+      ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      
+      if (byteData == null) throw Exception("Failed to generate image data");
+      
+      Uint8List pngBytes = byteData.buffer.asUint8List();
+
+      final tempDir = await getTemporaryDirectory();
+      final file = await File('${tempDir.path}/stayhub_ticket_${widget.booking.id}.png').create();
+      await file.writeAsBytes(pngBytes);
+
+      // 3. Share
+      await Share.shareXFiles(
+        [XFile(file.path)], 
+        text: 'My StayHub Booking Ticket - ${widget.booking.hostelName}'
+      );
+      
+    } catch (e) {
+      debugPrint("Save Ticket Error: $e");
+      if (mounted) {
+        showDialog(
+          context: context, 
+          builder: (ctx) => AlertDialog(
+            title: const Text("Error Saving Ticket"),
+            content: Text(e.toString()),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
+          )
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _requestRefund(Booking currentBooking) async {
+    setState(() => _isCancelling = true); // Show loading while checking time
+    
+    try {
+      // 1. Enforce 24-Hour Rule
+      final doc = await FirebaseFirestore.instance.collection('bookings').doc(currentBooking.id).get();
+      final bookedAt = (doc.data()?['timestamp'] as Timestamp?)?.toDate();
+
+      if (bookedAt != null) {
+         final hoursSince = DateTime.now().difference(bookedAt).inHours;
+         if (hoursSince > 24) {
+             if (mounted) {
+               showDialog(
+                 context: context,
+                 builder: (ctx) => AlertDialog(
+                   title: const Text("Refund Period Expired"),
+                   content: Text("Refunds are only available within 24 hours of booking.\n\nTime elapsed: $hoursSince hours.\n\nPlease contact the agent directly for assistance."),
+                   actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("OK"))],
+                 )
+               );
+             }
+             setState(() => _isCancelling = false);
+             return;
+         }
+      }
+    } catch (e) {
+      // Ignore error and proceed if timestamp check fails (fallback to allow request)
+    } finally {
+      if (mounted) setState(() => _isCancelling = false);
+    }
+
+    // 2. Confirmation Dialog
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Request Refund?"),
+        content: const Text("This will cancel your booking immediately. Refunds are processed within 5-10 business days.\n\nNote: This is only permitted within 24 hours of booking."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Keep Booking")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text("Cancel Booking", style: TextStyle(color: Colors.red))
+          ),
+        ],
+      )
+    );
+
+    if (confirm != true) return;
+
+    setState(() => _isCancelling = true);
+    try {
+      // Update Firestore
+      await FirebaseFirestore.instance.collection('bookings').doc(currentBooking.id).update({
+        'status': 'CANCELLED', // Use uppercase to match other statuses
+        'refund_status': 'REQUESTED',
+        'cancelled_at': FieldValue.serverTimestamp(),
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cancellation Request Sent.")));
+      }
+    } catch (e) {
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+       }
+    } finally {
+      if (mounted) setState(() => _isCancelling = false);
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final currencyFormat = NumberFormat.currency(locale: 'en_GH', symbol: '₵');
+    final currencyFormat = NumberFormat.currency(locale: 'en_GH', symbol: 'GHS ');
 
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F7FA),
@@ -23,38 +155,93 @@ class BookingDetailsPage extends StatelessWidget {
         elevation: 0,
         foregroundColor: isDark ? Colors.white : Colors.black,
       ),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            children: [
-              _buildTicket(context, isDark, currencyFormat),
-              const SizedBox(height: 30),
-              // Simulated "Download" or "Share" action
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text("Ticket saved to gallery (Simulated)")),
-                    );
-                  },
-                  icon: const Icon(Icons.download_rounded),
-                  label: const Text("Save Ticket"),
-                  style: ElevatedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      body: StreamBuilder<DocumentSnapshot>(
+        stream: FirebaseFirestore.instance.collection('bookings').doc(widget.booking.id).snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+          // Reconstruct updated booking object
+          final booking = Booking.fromFirestore(snapshot.data!);
+
+          return Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                children: [
+                  // Ticket
+                  RepaintBoundary(
+                    key: _ticketKey,
+                    child: _buildTicket(context, isDark, currencyFormat, booking),
                   ),
-                ),
+                  const SizedBox(height: 30),
+                  
+                  // Action Buttons
+                  Row(
+                    children: [
+                       Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _isSaving ? null : _captureAndSaveTicket,
+                          icon: _isSaving 
+                              ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)) 
+                              : const Icon(Icons.share_rounded),
+                          label: Text(_isSaving ? "Saving..." : "Save Ticket"),
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            backgroundColor: Theme.of(context).primaryColor,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                        ),
+                      ),
+                      
+                      // Only show Cancel if not cancelled
+                      if (booking.status != 'CANCELLED' && booking.status != 'COMPLETED') ...[
+                         const SizedBox(width: 16),
+                         Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isCancelling ? null : () => _requestRefund(booking),
+                            icon: const Icon(Icons.cancel_outlined, color: Colors.red),
+                            label: const Text("Cancel", style: TextStyle(color: Colors.red)),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                              side: const BorderSide(color: Colors.red),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                            ),
+                          ),
+                        ),
+                      ]
+                    ],
+                  ),
+                  
+                  if (booking.status == 'CANCELLED' || booking.status == 'cancelled')
+                     Padding(
+                       padding: const EdgeInsets.only(top: 24),
+                       child: Container(
+                         width: double.infinity,
+                         padding: const EdgeInsets.all(16),
+                         decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.red.withOpacity(0.3))),
+                         child: Column(
+                           children: [
+                             const Icon(Icons.info_outline, color: Colors.red, size: 30),
+                             const SizedBox(height: 8),
+                             const Text("Booking Cancelled", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 16)),
+                             const SizedBox(height: 4),
+                             Text("One of our agents will contact you regarding your refund status.", textAlign: TextAlign.center, style: TextStyle(color: Colors.red[800])),
+                           ],
+                         ),
+                       ),
+                     )
+                ],
               ),
-            ],
-          ),
-        ),
+            ),
+          );
+        }
       ),
     );
   }
 
-  Widget _buildTicket(BuildContext context, bool isDark, NumberFormat currencyFormat) {
+  Widget _buildTicket(BuildContext context, bool isDark, NumberFormat currencyFormat, Booking booking) {
     return Container(
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -119,7 +306,14 @@ class BookingDetailsPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 24),
-                const Divider(height: 1, thickness: 1, color: Colors.grey), // Dashed line simulation
+                // Dashed line
+                LayoutBuilder(builder: (context, constraints) {
+                  return Flex(
+                    direction: Axis.horizontal,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: List.generate((constraints.constrainWidth() / 10).floor(), (index) => SizedBox(width: 5, height: 1, child: DecoratedBox(decoration: BoxDecoration(color: Colors.grey[400])))),
+                  );
+                }),
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -135,6 +329,14 @@ class BookingDetailsPage extends StatelessWidget {
                     ),
                   ],
                 ),
+                // Status Stamp
+                if (booking.status == 'CANCELLED')
+                  Container(
+                    margin: const EdgeInsets.only(top: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(border: Border.all(color: Colors.red), borderRadius: BorderRadius.circular(8)),
+                    child: const Text("CANCELLED", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold, fontSize: 12)),
+                  )
               ],
             ),
           ),
@@ -161,7 +363,7 @@ class BookingDetailsPage extends StatelessWidget {
                 padding: const EdgeInsets.all(10), // Padding for quiet zone
                 child: Center(
                   child: QrImageView(
-                    data: booking.id, // The unique booking ID to scan
+                    data: booking.id, 
                     version: QrVersions.auto,
                     size: 140.0,
                     backgroundColor: Colors.white,
