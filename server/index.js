@@ -272,6 +272,66 @@ app.post("/sendPasswordResetLink", async (req, res) => {
     }
 });
 
+// -----------------------------------------------------------------------------
+// 6. Send OTP (Via Resend)
+// -----------------------------------------------------------------------------
+app.post("/sendOtp", async (req, res) => {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+        return res.status(400).json({ status: false, message: "Missing email or otp" });
+    }
+
+    const RESEND_API_KEY = process.env.RESEND_API_KEY || "re_dFTH3yX8_3conedEf9TF6aLkLsob3oP2W";
+
+    try {
+        const response = await axios.post(
+            'https://api.resend.com/emails',
+            {
+                from: 'StayHub Security <security@stayhubgh.com>',
+                to: [email],
+                subject: 'Your StayHub Verification Code',
+                html: `
+                  <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #f9f9f9;">
+                    <div style="background-color: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                      <div style="text-align: center; margin-bottom: 30px;">
+                        <h2 style="color: #1a1a1a; margin: 0; font-size: 24px;">Verify Your Email</h2>
+                      </div>
+                      
+                      <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin-bottom: 25px; text-align: center;">
+                        Use the code below to complete your sign up.
+                      </p>
+                      
+                      <div style="text-align: center; margin: 35px 0;">
+                        <span style="background-color: #e0e7ff; color: #2E2AB7; padding: 14px 28px; border-radius: 8px; font-weight: bold; font-size: 32px; letter-spacing: 5px; display: inline-block;">
+                          ${otp}
+                        </span>
+                      </div>
+        
+                      <p style="color: #888; font-size: 14px; margin-top: 40px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+                        If you didn't request this, please ignore. <br/>
+                        StayHub Inc.
+                      </p>
+                    </div>
+                  </div>
+                `
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${RESEND_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        return res.status(200).json({ status: true, message: "OTP sent successfully" });
+
+    } catch (error) {
+        console.error("OTP Send Error:", error);
+        return res.status(500).json({ status: false, message: "Failed to send OTP", details: error.message });
+    }
+});
+
 // Root Route
 app.get("/", (req, res) => {
     res.send("StayHub Server (Node.js) is Running! 🚀");
