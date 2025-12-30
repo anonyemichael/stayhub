@@ -7,9 +7,19 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: '*', // Allow all origins for debugging
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(require('compression')()); // Gzip compression
 app.use(express.json());
+
+// Request Logger
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
 
 // Load Secret Key from Environment Variable
 const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY;
