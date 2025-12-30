@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: stayhub-server
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node index.js
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_VERSION
+        value: 16.20.0
