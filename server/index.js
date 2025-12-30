@@ -8,6 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
+app.use(require('compression')()); // Gzip compression
 app.use(express.json());
 
 // Load Secret Key from Environment Variable
@@ -161,9 +162,109 @@ app.post("/createSubAccount", async (req, res) => {
     }
 });
 
+// -----------------------------------------------------------------------------
+// 5. Send Password Reset Link (Via Resend)
+// -----------------------------------------------------------------------------
+const admin = require("firebase-admin");
+
+// Initialize Firebase Admin (Expects FIREBASE_SERVICE_ACCOUNT env var)
+// On Render, add a 'Secret File' named 'service-account.json' and set 
+// GOOGLE_APPLICATION_CREDENTIALS to /etc/secrets/service-account.json
+// OR set FIREBASE_SERVICE_ACCOUNT as a JSON string environment variable.
+
+let firebaseInitialized = false;
+
+try {
+    if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+        const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        firebaseInitialized = true;
+        console.log("✅ Firebase Admin Initialized.");
+    } else {
+        console.warn("⚠️ WARNING: FIREBASE_SERVICE_ACCOUNT not set. Password reset will fail.");
+    }
+} catch (error) {
+    console.error("❌ Firebase Admin Init Error:", error);
+}
+
+app.post("/sendPasswordResetLink", async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ status: false, message: "Missing email" });
+    }
+
+    if (!firebaseInitialized) {
+        return res.status(500).json({ status: false, message: "Server configuration error: Firebase not initialized." });
+    }
+
+    const RESEND_API_KEY = process.env.RESEND_API_KEY || "re_dFTH3yX8_3conedEf9TF6aLkLsob3oP2W";
+
+    try {
+        // 1. Generate Auth Token / Link
+        const link = await admin.auth().generatePasswordResetLink(email, {
+            url: 'https://stayhubgh.com/reset-password',
+            handleCodeInApp: true
+        });
+
+        // 2. Send via Resend
+        const response = await axios.post(
+            'https://api.resend.com/emails',
+            {
+                from: 'StayHub Security <security@stayhubgh.com>',
+                to: [email],
+                subject: 'Reset your StayHub Password',
+                html: `
+                  <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background-color: #f9f9f9;">
+                    <div style="background-color: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+                      <div style="text-align: center; margin-bottom: 30px;">
+                        <h2 style="color: #1a1a1a; margin: 0; font-size: 24px;">Reset Password Request</h2>
+                      </div>
+                      
+                      <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                        Hello,
+                      </p>
+                      <p style="color: #4a4a4a; font-size: 16px; line-height: 1.6; margin-bottom: 25px;">
+                        We received a request to reset your password for your StayHub account. 
+                        If you didn't make this request, you can safely ignore this email.
+                      </p>
+                      
+                      <div style="text-align: center; margin: 35px 0;">
+                        <a href="${link}" style="background-color: #2E2AB7; color: white; text-decoration: none; padding: 14px 28px; border-radius: 8px; font-weight: bold; font-size: 16px; display: inline-block; box-shadow: 0 4px 6px rgba(46, 42, 183, 0.2);">
+                          Reset Password
+                        </a>
+                      </div>
+        
+                      <p style="color: #888; font-size: 14px; margin-top: 40px; text-align: center; border-top: 1px solid #eee; padding-top: 20px;">
+                        StayHub Inc. <br/>
+                        Accra, Ghana
+                      </p>
+                    </div>
+                  </div>
+                `
+            },
+            {
+                headers: {
+                    'Authorization': `Bearer ${RESEND_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            }
+        );
+
+        return res.status(200).json({ status: true, message: "Password reset email sent" });
+
+    } catch (error) {
+        console.error("Password Reset Error:", error);
+        const msg = error.errorInfo ? error.errorInfo.message : error.message;
+        return res.status(500).json({ status: false, message: "Failed to process request", details: msg });
+    }
+});
+
 // Root Route
 app.get("/", (req, res) => {
-    res.send("StayHub Payment Server is Running! 🚀");
+    res.send("StayHub Server (Node.js) is Running! 🚀");
 });
 
 // Start Server
