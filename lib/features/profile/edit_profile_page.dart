@@ -1,5 +1,6 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+// import 'dart:io' show File;
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -21,11 +22,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _emailController;
+  String? _selectedSchool;
+  final List<String> _schools = ['UENR', 'UDS'];
 
   bool _isLoading = true;
   bool _isSaving = false;
   String _userCollection = 'users';
-  File? _imageFile;
+  XFile? _imageFile;
   String? _photoUrl;
   bool _isPickingImage = false; // Flag to prevent multiple image pickers
 
@@ -68,6 +71,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           _nameController.text = data['fullName'] ?? data['name'] ?? '';
           _phoneController.text = data['phoneNumber'] ?? '';
           _emailController.text = FirebaseAuth.instance.currentUser?.email ?? '';
+          _selectedSchool = data['school'];
           _photoUrl = data['photoUrl'];
           _isLoading = false;
         });
@@ -89,7 +93,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       final pickedFile = await picker.pickImage(source: ImageSource.gallery);
 
       if (pickedFile != null) {
-        setState(() => _imageFile = File(pickedFile.path));
+        setState(() => _imageFile = pickedFile);
       }
     } finally {
       if (mounted) {
@@ -113,6 +117,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
       Map<String, dynamic> dataToUpdate = {
         'fullName': _nameController.text.trim(),
         'phoneNumber': _phoneController.text.trim(),
+        'school': _selectedSchool,
         'lastUpdated': FieldValue.serverTimestamp(),
       };
 
@@ -161,11 +166,11 @@ class _EditProfilePageState extends State<EditProfilePage> {
                         children: [
                           CircleAvatar(
                             radius: 60,
-                            backgroundImage: _imageFile != null 
-                                ? FileImage(_imageFile!) 
+                            backgroundImage: (_imageFile != null 
+                                ? (kIsWeb ? NetworkImage(_imageFile!.path) : NetworkImage(_imageFile!.path)) // FileImage removed for web compat
                                 : (_photoUrl != null && _photoUrl!.isNotEmpty 
                                     ? NetworkImage(_photoUrl!) 
-                                    : const AssetImage('assets/logo/logo.png')) as ImageProvider,
+                                    : const AssetImage('assets/logo/logo.png'))) as ImageProvider,
                             onBackgroundImageError: (_, __) { /* Handles NetworkImage failure */ },
                           ),
                           Positioned(
@@ -196,6 +201,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                           const SizedBox(height: 20),
                           _buildInput(context, "Email Address", _emailController, Icons.email_outlined, readOnly: true),
                           const SizedBox(height: 20),
+                          _buildSchoolDropdown(context, isDark),
+                          const SizedBox(height: 20),
                           _buildInput(context, "Phone Number", _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
                           const SizedBox(height: 40),
                           SizedBox(
@@ -221,6 +228,43 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ),
               ],
             ),
+    );
+  }
+
+  Widget _buildSchoolDropdown(BuildContext context, bool isDark) {
+    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
+    final glassColor = isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text("University", style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: glassColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: textColor.withOpacity(0.1)),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: _selectedSchool,
+              isExpanded: true,
+              hint: Text("Select your school", style: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.w500)),
+              dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+              icon: Icon(Icons.school_outlined, color: textColor.withOpacity(0.4)),
+              items: _schools.map((school) {
+                return DropdownMenuItem(
+                  value: school,
+                  child: Text(school, style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
+                );
+              }).toList(),
+              onChanged: (val) => setState(() => _selectedSchool = val),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

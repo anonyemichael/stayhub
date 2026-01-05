@@ -135,7 +135,7 @@ class AgentInboxPage extends StatelessWidget {
                                 children: [
                                   CircleAvatar(
                                     radius: 28,
-                                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
+                                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
                                     backgroundColor: Colors.blueAccent.withOpacity(0.1),
                                     child: photoUrl == null ? const Icon(Icons.person, color: Colors.blueAccent) : null,
                                   ),

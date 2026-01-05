@@ -62,6 +62,8 @@
 
                 <data android:scheme="https" android:host="device-streaming-d7021871.web.app" />
                 <data android:scheme="https" android:host="device-streaming-d7021871.firebaseapp.com" />
+                <data android:scheme="https" android:host="stayhubgh.com" />
+                <data android:scheme="https" android:host="www.stayhubgh.com" />
             </intent-filter>
 
         </activity>

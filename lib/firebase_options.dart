@@ -25,15 +25,9 @@ class DefaultFirebaseOptions {
       case TargetPlatform.iOS:
         return ios;
       case TargetPlatform.macOS:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for macos - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return macos;
       case TargetPlatform.windows:
-        throw UnsupportedError(
-          'DefaultFirebaseOptions have not been configured for windows - '
-          'you can reconfigure this by running the FlutterFire CLI again.',
-        );
+        return windows;
       case TargetPlatform.linux:
         throw UnsupportedError(
           'DefaultFirebaseOptions have not been configured for linux - '
@@ -47,8 +41,8 @@ class DefaultFirebaseOptions {
   }
 
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'AIzaSyC-4FI84mCzrlhXBU-dxDFrz02TOyGU_Iw', // Values from Android
-    appId: '1:33041190550:web:dummy_placeholder_id', // Placeholder App ID
+    apiKey: 'AIzaSyB4d-KJheh1bXJxTBSInO4B8dgwVW07gO0',
+    appId: '1:33041190550:web:376defc727f41bde963cb7',
     messagingSenderId: '33041190550',
     projectId: 'device-streaming-d7021871',
     authDomain: 'device-streaming-d7021871.firebaseapp.com',
@@ -69,8 +63,29 @@ class DefaultFirebaseOptions {
     messagingSenderId: '33041190550',
     projectId: 'device-streaming-d7021871',
     storageBucket: 'device-streaming-d7021871.firebasestorage.app',
-    androidClientId: '33041190550-vt1mjs5b97f66auv4u7vgl1pk9ntr21j.apps.googleusercontent.com',
+    androidClientId: '33041190550-2lbpib6h8hn9nd7rsio4raalgbtcstab.apps.googleusercontent.com',
     iosClientId: '33041190550-ko6f8duu712tqbpkmeuv3vo5o6e8ilel.apps.googleusercontent.com',
     iosBundleId: 'com.example.stayhub.stayhub',
   );
+
+  static const FirebaseOptions macos = FirebaseOptions(
+    apiKey: 'AIzaSyAfNikKB-fgVazhqOlgY8brKqkJUJefCxw',
+    appId: '1:33041190550:ios:08b6ae86278b16f4963cb7',
+    messagingSenderId: '33041190550',
+    projectId: 'device-streaming-d7021871',
+    storageBucket: 'device-streaming-d7021871.firebasestorage.app',
+    androidClientId: '33041190550-2lbpib6h8hn9nd7rsio4raalgbtcstab.apps.googleusercontent.com',
+    iosClientId: '33041190550-ko6f8duu712tqbpkmeuv3vo5o6e8ilel.apps.googleusercontent.com',
+    iosBundleId: 'com.example.stayhub.stayhub',
+  );
+
+  static const FirebaseOptions windows = FirebaseOptions(
+    apiKey: 'AIzaSyB4d-KJheh1bXJxTBSInO4B8dgwVW07gO0',
+    appId: '1:33041190550:web:fc334885cd83a04c963cb7',
+    messagingSenderId: '33041190550',
+    projectId: 'device-streaming-d7021871',
+    authDomain: 'device-streaming-d7021871.firebaseapp.com',
+    storageBucket: 'device-streaming-d7021871.firebasestorage.app',
+  );
+
 }

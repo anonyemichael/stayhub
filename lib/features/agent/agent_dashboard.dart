@@ -14,6 +14,8 @@ import 'package:stayhub/features/agent/add_hostel_page.dart';
 import 'package:stayhub/features/agent/ticket_scanner_page.dart';
 import 'package:stayhub/features/agent/agent_inbox_page.dart';
 import 'package:stayhub/features/agent/add_clip_page.dart';
+import 'package:stayhub/features/agent/agent_clips_page.dart'; // Added
+import 'package:stayhub/features/home/notifications_page.dart';
 
 class AgentDashboard extends StatefulWidget {
   const AgentDashboard({super.key});
@@ -121,6 +123,33 @@ class _AgentDashboardState extends State<AgentDashboard> {
         backgroundColor: Colors.transparent,
         elevation: 0,
         actions: [
+          // Notification Bell with Badge
+          StreamBuilder<QuerySnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(_user?.uid)
+                .collection('notifications')
+                .where('isRead', isEqualTo: false)
+                .snapshots(),
+            builder: (context, snapshot) {
+              final int unreadCount = snapshot.data?.docs.length ?? 0;
+              
+              return IconButton(
+                onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())), 
+                icon: Badge(
+                  isLabelVisible: unreadCount > 0,
+                  label: Text(unreadCount > 9 ? '9+' : '$unreadCount'),
+                  child: Icon(Icons.notifications_none_rounded, color: isDark ? Colors.white : Colors.black),
+                ),
+              );
+            },
+          ),
+          /*
+          IconButton(
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())), 
+            icon: Icon(Icons.notifications_none_rounded, color: isDark ? Colors.white : Colors.black)
+          ),
+          */
           Container(
             margin: const EdgeInsets.only(right: 16),
             child: IconButton(
@@ -220,8 +249,9 @@ class DashboardOverview extends StatelessWidget {
       greeting = "Happy Valentine's ❤️,";
     } else {
        final hour = now.hour;
-       if (hour < 12) greeting = "Good Morning 🌤️,";
-       else if (hour < 17) greeting = "Good Afternoon ☀️,";
+       if (hour < 12) {
+         greeting = "Good Morning 🌤️,";
+       } else if (hour < 17) greeting = "Good Afternoon ☀️,";
        else greeting = "Good Evening 🌙,";
     }
 
@@ -333,8 +363,8 @@ class DashboardOverview extends StatelessWidget {
                        child: Column(
                          mainAxisAlignment: MainAxisAlignment.center,
                          children: [
-                           Icon(Icons.add_home_work_outlined, size: 30, color: Colors.grey),
-                           Text("No properties yet", style: TextStyle(color: Colors.grey)),
+                           const Icon(Icons.add_home_work_outlined, size: 30, color: Colors.grey),
+                           Text("No properties yet", style: const TextStyle(color: Colors.grey)),
                          ],
                        ),
                      );
@@ -403,9 +433,9 @@ class DashboardOverview extends StatelessWidget {
               }, isDark),
               _buildModernActionCard(context, Icons.chat_bubble_outline_rounded, "Messages", "Inquiries", Colors.purpleAccent, () {
                  Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentInboxPage()));
-              }, isDark),
+              }, isDark, showBadge: true), // Enable Badge check
               _buildModernActionCard(context, Icons.video_collection_outlined, "Videos", "Promote", Colors.pinkAccent, () {
-                 Navigator.push(context, MaterialPageRoute(builder: (_) => const AddClipPage()));
+                 Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentClipsPage()));
               }, isDark),
             ],
           ),
@@ -545,7 +575,7 @@ class DashboardOverview extends StatelessWidget {
     );
   }
 
-  Widget _buildModernActionCard(BuildContext context, IconData icon, String title, String subtitle, Color accentColor, VoidCallback onTap, bool isDark, {bool isWide = false}) {
+  Widget _buildModernActionCard(BuildContext context, IconData icon, String title, String subtitle, Color accentColor, VoidCallback onTap, bool isDark, {bool isWide = false, bool showBadge = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
@@ -560,13 +590,40 @@ class DashboardOverview extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisAlignment: MainAxisAlignment.spaceBetween, // Distribute space evenly
           children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: accentColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Icon(icon, color: accentColor, size: 28),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Icon(icon, color: accentColor, size: 28),
+                ),
+                if (showBadge)
+                  Positioned(
+                    top: -5,
+                    right: -5,
+                    child: StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance.collection('chats').where('users', arrayContains: FirebaseAuth.instance.currentUser?.uid).snapshots(),
+                      builder: (context, snapshot) {
+                         // Simple heuristic: If any chat has 'lastMessage' and I'm not the sender (naively)? 
+                         // Or just show dot if ANY chat exists to encourage checking?
+                         // Let's count docs for now as an activity indicator.
+                         // Ideally we need 'unread' field. Assuming we just show a dot if there are chats.
+                         final count = snapshot.data?.docs.length ?? 0;
+                         if (count == 0) return const SizedBox.shrink();
+                         
+                         return Container(
+                           padding: const EdgeInsets.all(6),
+                           decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle),
+                           child: Text('$count', style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                         );
+                      }
+                    ),
+                  )
+              ],
             ),
             const SizedBox(height: 10),
             Column(
@@ -619,8 +676,11 @@ class DashboardOverview extends StatelessWidget {
           final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
           final dateVal = data['date'];
           DateTime date;
-          if (dateVal is Timestamp) date = dateVal.toDate();
-          else continue;
+          if (dateVal is Timestamp) {
+            date = dateVal.toDate();
+          } else {
+            continue;
+          }
           
           // Only process credit transactions? Or net? Assuming 'credit' is revenue.
           if (data['type'] == 'credit') {
@@ -643,9 +703,9 @@ class DashboardOverview extends StatelessWidget {
           LineChartData(
             gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (val) => FlLine(color: isDark ? Colors.white10 : Colors.grey[100], strokeWidth: 1)),
             titlesData: FlTitlesData(
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
               bottomTitles: AxisTitles(
                 sideTitles: SideTitles(
                   showTitles: true,
@@ -669,7 +729,7 @@ class DashboardOverview extends StatelessWidget {
                 color: const Color(0xFF2E2AB7),
                 barWidth: 3,
                 isStrokeCapRound: true,
-                dotData: FlDotData(show: false),
+                dotData: const FlDotData(show: false),
                 belowBarData: BarAreaData(
                   show: true,
                   gradient: LinearGradient(

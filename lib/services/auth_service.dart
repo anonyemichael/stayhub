@@ -1,9 +1,16 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:flutter/foundation.dart';
+// For debugPrint
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'package:stayhub/core/api_config.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+    clientId: kIsWeb ? '33041190550-pa4rcbsoac2b4irda7g0lonl5rpnpuef.apps.googleusercontent.com' : null,
+  );
 
   // Get current user (useful for checking if logged in)
   User? get currentUser => _auth.currentUser;
@@ -46,33 +53,33 @@ class AuthService {
   // ---------------------------------------------------------------------------
   Future<User?> signInWithGoogle() async {
     try {
-      // Force the user to select an account every time by signing out of Google first
-      await _googleSignIn.signOut();
+      if (kIsWeb) {
+        // WEB: Use Firebase Auth's built-in Popup (More reliable for Web)
+        final GoogleAuthProvider googleProvider = GoogleAuthProvider();
+        final UserCredential userCredential = await _auth.signInWithPopup(googleProvider);
+        return userCredential.user;
+      } else {
+        // MOBILE (Android/iOS): Use GoogleSignIn Plugin
+        await _googleSignIn.signOut(); // Force account selection
+        
+        final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        if (googleUser == null) return null; // Cancelled
 
-      // Trigger the authentication flow
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+        final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
 
-      if (googleUser == null) {
-        // User canceled the sign-in flow
-        return null;
+        final userCredential = await _auth.signInWithCredential(credential);
+        return userCredential.user;
       }
-
-      // Obtain the auth details from the request
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
-
-      // Create a new credential
-      final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
-        idToken: googleAuth.idToken,
-      );
-
-      // Once signed in, return the UserCredential
-      final userCredential = await _auth.signInWithCredential(credential);
-      return userCredential.user;
     } catch (e) {
-      print("Error during Google Sign-In: $e");
-      // Include the actual error in the exception for debugging
-      throw Exception("Google Sign-In failed: $e");
+      debugPrint("Error during Google Sign-In: $e");
+      if (e is FirebaseAuthException) {
+        throw Exception(_handleAuthError(e));
+      }
+      throw Exception("Google Sign-In failed: ${e.toString()}");
     }
   }
 
@@ -89,13 +96,44 @@ class AuthService {
   }
   
   // ---------------------------------------------------------------------------
-  // 5. PASSWORD RESET
+  // 5. PASSWORD RESET (Via Node.js Backend on Render)
   // ---------------------------------------------------------------------------
   Future<void> sendPasswordResetEmail(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email);
+      // Use Central API Config
+      const String backendUrl = ApiConfig.sendPasswordReset;
+
+      debugPrint("Sending reset request to: $backendUrl");
+
+      final response = await http.post(
+        Uri.parse(backendUrl),
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({"email": email}),
+      );
+
+      if (response.statusCode == 200) {
+        debugPrint("Reset email sent via Backend.");
+        return; // Success
+      } else {
+        debugPrint("Backend Error: ${response.body}");
+        try {
+           final body = jsonDecode(response.body);
+           if (body['message'] != null) {
+              throw Exception(body['message']);
+           }
+        } catch (_) {}
+        
+        // If the server is down or returns error, fallback to Firebase default?
+        // Risky if the goal is strictly to avoid spam, but better than nothing for UX.
+        // Actually, if backend fails, likely due to config, let's throw to warn dev.
+        throw Exception("Failed to send reset email via custom server. Check server logs.");
+      }
     } catch (e) {
-      throw Exception(_handleAuthError(e));
+       debugPrint("Custom Reset Error: $e");
+       // Fallback to Firebase Default (with spam warning in UI)
+       // Uncomment below line if you want fallback enabled:
+       // await _auth.sendPasswordResetEmail(email: email);
+       rethrow; // Rethrow to show error in UI
     }
   }
 
@@ -106,21 +144,29 @@ class AuthService {
     if (e is FirebaseAuthException) {
       switch (e.code) {
         case 'email-already-in-use':
-          return 'This email is already registered.';
+          return 'This email is already in use. Please try logging in.';
         case 'invalid-email':
-          return 'The email address is invalid.';
+          return 'Please enter a valid email address.';
         case 'weak-password':
-          return 'The password is too weak.';
+          return 'Your password is too weak. Please use a stronger password.';
         case 'user-not-found':
-          return 'No user found with this email.';
+          return 'No account found with this email. Please sign up.';
         case 'wrong-password':
-          return 'Incorrect password.';
+          return 'Incorrect password. Please try again.';
         case 'network-request-failed':
-          return 'Please check your internet connection.';
+          return 'Network error. Please check your internet connection.';
+        case 'user-disabled':
+          return 'This account has been disabled. Please contact support.';
+        case 'too-many-requests':
+          return 'Too many attempts. Please try again later.';
+        case 'unauthorized-domain':
+          return 'Domain not authorized. Please add it in Firebase Console.';
+        case 'popup-closed-by-user':
+          return 'Sign in cancelled.';
         default:
-          return 'Authentication failed. Please try again.';
+          return 'Authentication failed. Please try again (${e.code}).';
       }
     }
-    return 'An unexpected error occurred.';
+    return e.toString();
   }
 }

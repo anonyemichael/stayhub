@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:intl/intl.dart' hide TextDirection;
 
 class TicketScannerPage extends StatefulWidget {
   const TicketScannerPage({super.key});
@@ -428,8 +427,8 @@ class ScannerOverlayPainter extends CustomPainter {
       ..strokeWidth = 4 // Thinner
       ..strokeCap = StrokeCap.round;
 
-    final cornerLength = 30.0;
-    final r = 20.0; // Corner radius matching cutOut
+    const cornerLength = 30.0;
+    const r = 20.0; // Corner radius matching cutOut
 
     final path = Path();
     // Top Left

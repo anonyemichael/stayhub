@@ -8,6 +8,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class MapPage extends StatefulWidget {
   final bool isActive;
@@ -76,6 +78,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   }
 
   Future<void> _checkLocationPermission() async {
+    if (kIsWeb) {
+      // On web, Geolocator handles permissions or they are managed by browser
+      setState(() => _locationPermissionGranted = true);
+      if (widget.isActive) {
+        _moveCameraToUserLocation();
+      }
+      return;
+    }
     final status = await Permission.location.request();
     if (mounted && status.isGranted) {
       setState(() => _locationPermissionGranted = true);
@@ -88,6 +98,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
   Future<void> _moveCameraToUserLocation() async {
     try {
       final position = await Geolocator.getCurrentPosition();
+      if (!mounted) return;
       _mapController?.animateCamera(
         CameraUpdate.newCameraPosition(
           CameraPosition(target: LatLng(position.latitude, position.longitude), zoom: 16.0),
@@ -199,12 +210,14 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             top: 50,
             left: 20,
             right: 20,
-            child: Column(
-              children: [
-                _buildGlassSearchBar(context),
-                const SizedBox(height: 12),
-                _buildFilterList(context),
-              ],
+            child: PointerInterceptor(
+              child: Column(
+                children: [
+                  _buildGlassSearchBar(context),
+                  const SizedBox(height: 12),
+                  _buildFilterList(context),
+                ],
+              ),
             ),
           ),
           
@@ -214,21 +227,23 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               top: 160,
               left: 100,
               right: 100,
-              child: Center(
-                child: GestureDetector(
-                  onTap: () {
-                     setState(() => _showSearchAreaButton = false);
-                     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Searching this area..."), duration: Duration(milliseconds: 500)));
-                     // In a real app, you'd trigger a geo-query here based on map bounds
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4, offset: const Offset(0,2))]
+              child: PointerInterceptor(
+                child: Center(
+                  child: GestureDetector(
+                    onTap: () {
+                       setState(() => _showSearchAreaButton = false);
+                       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Searching this area..."), duration: Duration(milliseconds: 500)));
+                       // In a real app, you'd trigger a geo-query here based on map bounds
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4, offset: Offset(0,2))]
+                      ),
+                      child: const Text("Search this area", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                     ),
-                    child: const Text("Search this area", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                   ),
                 ),
               ),
@@ -238,16 +253,18 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           Positioned(
             right: 16,
             bottom: _selectedHostel != null ? 240 : 120,
-            child: Column(
-              children: [
-                _buildMapButton(context, Icons.add, () => _mapController?.animateCamera(CameraUpdate.zoomIn())),
-                const SizedBox(height: 10),
-                _buildMapButton(context, Icons.remove, () => _mapController?.animateCamera(CameraUpdate.zoomOut())),
-                if (_locationPermissionGranted) ...[
-                  const SizedBox(height: 20),
-                  _buildMapButton(context, Icons.near_me_rounded, _moveCameraToUserLocation, isPrimary: true),
-                ]
-              ],
+            child: PointerInterceptor(
+              child: Column(
+                children: [
+                  _buildMapButton(context, Icons.add, () => _mapController?.animateCamera(CameraUpdate.zoomIn())),
+                  const SizedBox(height: 10),
+                  _buildMapButton(context, Icons.remove, () => _mapController?.animateCamera(CameraUpdate.zoomOut())),
+                  if (_locationPermissionGranted) ...[
+                    const SizedBox(height: 20),
+                    _buildMapButton(context, Icons.near_me_rounded, _moveCameraToUserLocation, isPrimary: true),
+                  ]
+                ],
+              ),
             ),
           ),
 
@@ -258,9 +275,11 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
             left: 20,
             right: 20,
             bottom: _selectedHostel != null ? 110 : -250,
-            child: _selectedHostel != null
-                ? _buildHostelCard(context, _selectedHostel!)
-                : const SizedBox.shrink(),
+            child: PointerInterceptor(
+              child: _selectedHostel != null
+                  ? _buildHostelCard(context, _selectedHostel!)
+                  : const SizedBox.shrink(),
+            ),
           ),
         ],
       ),
@@ -336,7 +355,7 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
               decoration: BoxDecoration(
                 color: isActive ? Theme.of(context).primaryColor : (isDark ? Colors.black.withValues(alpha: 0.6) : Colors.white),
                 borderRadius: BorderRadius.circular(20),
-                boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 4, offset: const Offset(0,2))],
+                boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0,2))],
               ),
               child: Text(
                 filters[index], 

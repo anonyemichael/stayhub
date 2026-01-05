@@ -108,8 +108,11 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
                 ? Center(
                     child: Text("Please log in to view bookings",
                         style: TextStyle(color: theme.textTheme.bodyLarge?.color?.withOpacity(0.7))))
-                : StreamBuilder<QuerySnapshot>(
-                    stream: _firestoreService.getUserBookings(user.uid),
+                : Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1400),
+                      child: StreamBuilder<QuerySnapshot>(
+                        stream: _firestoreService.getUserBookings(user.uid),
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting) {
                         return Center(child: CircularProgressIndicator(color: theme.primaryColor));
@@ -138,8 +141,11 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
                           ),
                         ],
                       );
+
                     },
                   ),
+                ),
+            ),
           ),
         ],
       ),
@@ -172,8 +178,8 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
 
   Widget _buildBookingList(List<Booking> allBookings, String type, bool isDark) {
     final filtered = type == 'Upcoming'
-        ? allBookings.where((b) => b.status == 'CONFIRMED' || b.status == 'PAID' || b.status == 'CHECKED_IN').toList()
-        : allBookings.where((b) => b.status == 'COMPLETED' || b.status == 'CANCELLED').toList();
+        ? allBookings.where((b) => b.status == 'CONFIRMED' || b.status == 'PAID').toList()
+        : allBookings.where((b) => b.status == 'COMPLETED' || b.status == 'CANCELLED' || b.status == 'CHECKED_IN').toList();
 
     if (filtered.isEmpty) {
       return Center(
@@ -188,12 +194,37 @@ class _BookingsPageState extends State<BookingsPage> with SingleTickerProviderSt
       );
     }
 
-    return ListView.builder(
-      padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 100),
-      itemCount: filtered.length,
-      itemBuilder: (context, index) {
-        return TicketCard(booking: filtered[index]);
-      },
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        if (constraints.maxWidth > 900) {
+          // Desktop: Grid Layout
+          return GridView.builder(
+            padding: const EdgeInsets.all(20),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 500, // Max width of a ticket
+              mainAxisExtent: 420, // ample height
+              mainAxisSpacing: 20,
+              crossAxisSpacing: 20,
+            ),
+            itemCount: filtered.length,
+            itemBuilder: (context, index) => TicketCard(booking: filtered[index]),
+          );
+        }
+
+        // Mobile: List Layout
+        return ListView.builder(
+          padding: const EdgeInsets.only(left: 20, right: 20, top: 10, bottom: 100),
+          itemCount: filtered.length,
+          itemBuilder: (context, index) {
+            return Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 500),
+                child: TicketCard(booking: filtered[index]),
+              ),
+            );
+          },
+        );
+      }
     );
   }
 }
@@ -227,11 +258,11 @@ class TicketCard extends StatelessWidget {
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                 child: CachedNetworkImage(
                   imageUrl: booking.imageUrl,
-                  height: 150,
+                  height: 180,
                   width: double.infinity,
                   fit: BoxFit.cover,
                   memCacheWidth: 600,
-                  errorWidget: (context, url, error) => Container(height: 150, color: isDark ? Colors.grey[800] : Colors.grey[300], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
+                  errorWidget: (context, url, error) => Container(height: 180, color: isDark ? Colors.grey[800] : Colors.grey[300], child: const Center(child: Icon(Icons.broken_image, color: Colors.grey))),
                 ),
               ),
               Positioned.fill(child: Container(decoration: BoxDecoration(borderRadius: const BorderRadius.vertical(top: Radius.circular(24)), gradient: LinearGradient(colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent], begin: Alignment.bottomCenter, end: Alignment.center)))),
@@ -333,6 +364,28 @@ class TicketCard extends StatelessWidget {
                     if (booking.status == 'CONFIRMED')
                        ElevatedButton.icon(
                         onPressed: () async {
+                           // LEGAL PROTECTION DIALOG (Simplified)
+                           final bool? agreed = await showDialog<bool>(
+                             context: context,
+                             builder: (ctx) => AlertDialog(
+                               title: const Text("Confirm Payment", style: TextStyle(fontWeight: FontWeight.bold)),
+                               content: const Text(
+                                 "By proceeding, you confirm that you have verified this hostel and agree to our Terms of Service.\n\n"
+                                 "Note: Payments are non-refundable via the app.",
+                               ),
+                               actions: [
+                                 TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text("Cancel")),
+                                 ElevatedButton(
+                                   onPressed: () => Navigator.pop(ctx, true), 
+                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.blue[900], foregroundColor: Colors.white),
+                                   child: const Text("Agree & Pay"),
+                                 ),
+                               ],
+                             )
+                           );
+
+                           if (agreed != true) return;
+
                            final email = FirebaseAuth.instance.currentUser?.email ?? "student@stayhub.com";
                            final ref = "REF-${DateTime.now().millisecondsSinceEpoch}";
                            
@@ -379,12 +432,12 @@ class TicketCard extends StatelessWidget {
                              );
                              
                              if (context.mounted) {
-                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment Successful! Booking Confirmed."), backgroundColor: Colors.green));
+                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment Successful! Receipt sent to your email."), backgroundColor: Colors.green));
                              }
                            } else {
-                             if (context.mounted) {
-                               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment Cancelled"), backgroundColor: Colors.red));
-                             }
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Payment process cancelled."), backgroundColor: Color(0xFF333333)));
+                              }
                            }
                         },
                         icon: const Icon(Icons.payment, size: 16),
@@ -466,7 +519,7 @@ class TicketCard extends StatelessWidget {
     // Get Agent Name
     String agentName = "Agent";
     try {
-      final agentDoc = await FirebaseFirestore.instance.collection('users').doc(agentId).get();
+      final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(agentId).get();
       if (agentDoc.exists) {
         agentName = agentDoc['name'] ?? "Agent";
       }
@@ -498,4 +551,5 @@ class TicketCard extends StatelessWidget {
        ));
     }
   }
+
 }

@@ -19,14 +19,14 @@ class NotificationsPage extends StatelessWidget {
         title: Text(
           'Notifications',
           style: TextStyle(
-            color: isDark ? Colors.white : Colors.black,
+            color: theme.textTheme.bodyLarge?.color,
             fontWeight: FontWeight.bold,
           ),
         ),
         centerTitle: true,
         backgroundColor: Colors.transparent,
         elevation: 0,
-        iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
+        iconTheme: IconThemeData(color: theme.textTheme.bodyLarge?.color),
       ),
       body: user == null
           ? Center(child: Text("Please log in to see notifications", style: TextStyle(color: theme.textTheme.bodyLarge?.color)))

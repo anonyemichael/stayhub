@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -22,6 +23,14 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
   bool _isBooking = false;
   final _auth = FirebaseAuth.instance;
   final _firestoreService = FirestoreService();
+  
+  String _getSecureUrl(String? url) {
+    if (url == null || url.isEmpty) return 'https://picsum.photos/500'; 
+    if (url.startsWith('http://')) {
+      return url.replaceFirst('http://', 'https://');
+    }
+    return url;
+  }
 
   Future<void> _bookHostel() async {
     final user = _auth.currentUser;
@@ -47,6 +56,35 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
                 _buildGenderOption("Female", Icons.female),
               ],
             ),
+            const SizedBox(height: 24),
+            Text.rich(
+              TextSpan(
+                text: "By booking, you agree to StayHub's ",
+                style: TextStyle(color: Colors.grey[600], fontSize: 11),
+                children: [
+                  TextSpan(
+                    text: "Terms",
+                    style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () => launchUrl(
+                        Uri.parse('https://stayhubgh.com/terms.html'),
+                        mode: LaunchMode.inAppWebView,
+                      ),
+                  ),
+                  const TextSpan(text: " and "),
+                  TextSpan(
+                    text: "Privacy Policy",
+                    style: const TextStyle(color: Colors.blue, decoration: TextDecoration.underline),
+                    recognizer: TapGestureRecognizer()
+                      ..onTap = () => launchUrl(
+                        Uri.parse('https://stayhubgh.com/privacy.html'),
+                        mode: LaunchMode.inAppWebView,
+                      ),
+                  ),
+                ],
+              ),
+              textAlign: TextAlign.center,
+            ),
           ],
         ),
       ),
@@ -60,19 +98,22 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
       // Extract Data
       final name = widget.hostel['name'] ?? 'Unknown Hostel';
       final location = widget.hostel['location'] ?? 'Unknown Location';
-      final image = widget.hostel['image'] ?? 'https://picsum.photos/500';
-      final priceStr = widget.hostel['price']?.toString().replaceAll(',', '') ?? '0';
-      final price = double.tryParse(priceStr) ?? 0.0;
+      final image = _getSecureUrl(widget.hostel['image']);
+      
+      // 1. Get Financials (Prefer stored values from AddHostelPage)
+      final double studentPaysTotal = (widget.hostel['price'] as num?)?.toDouble() ?? 0.0;
       final agentId = widget.hostel['agentId'] ?? ''; 
       
-      // Determine Commission / Fee
-      final double platformFee = widget.hostel['platformFee'] != null 
-          ? (widget.hostel['platformFee'] as num).toDouble() 
-          : 50.0; // Fallback legacy fee
+      // Use stored net earnings and platform fee if they exist
+      double platformFee = (widget.hostel['platformFee'] as num?)?.toDouble() ?? -1.0;
+      double agentEarnings = (widget.hostel['agentPrice'] as num?)?.toDouble() ?? -1.0;
 
-      final double agentEarnings = widget.hostel['agentPrice'] != null 
-          ? (widget.hostel['agentPrice'] as num).toDouble() 
-          : (price - platformFee); 
+      // 2. Fallback for legacy listings (re-calculate using global commission)
+      if (platformFee < 0 || agentEarnings < 0) {
+        final double globalCommissionPercent = await _firestoreService.getGlobalCommission();
+        platformFee = (studentPaysTotal * globalCommissionPercent) / 100;
+        agentEarnings = studentPaysTotal - platformFee;
+      }
 
       // Create Booking Object
       final bookingData = {
@@ -80,9 +121,12 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
         'hostelName': name,
         'location': location,
         'imageUrl': image,
-        'price': price, // Full Price
-        'agentPrice': agentEarnings, 
-        'platformFee': platformFee, // Saved for payment split logic
+        
+        // FINANCIALS RECORD
+        'price': studentPaysTotal,     // Full Price
+        'agentPrice': agentEarnings,   // Net to Agent
+        'platformFee': platformFee,    // Our Cut
+        
         'agentId': agentId, 
         
         // Student Info
@@ -100,9 +144,6 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
       // Save to Firestore
       await FirestoreService().addBooking(user.uid, bookingData);
       
-      // Create Notification
-      await _firestoreService.createNotification(user.uid, "Booking Requested", "Your request for $name is pending agent approval.");
-
       if (mounted) {
         // Updated Success Message
         showDialog(
@@ -136,9 +177,9 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
         decoration: BoxDecoration(
-          color: Colors.blue.withOpacity(0.1),
+          color: Colors.blue.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.blue.withOpacity(0.3)),
+          border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
         ),
         child: Column(
           children: [
@@ -291,7 +332,7 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(icon, color: color, size: 28),
@@ -318,13 +359,21 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
     final price = widget.hostel['price']?.toString() ?? '0';
     final rating = widget.hostel['rating']?.toString() ?? '4.5';
     final capacity = widget.hostel['capacity']?.toString() ?? '4'; // New
-    final image = widget.hostel['image']?.toString() ?? 'https://picsum.photos/500/400';
+    final image = _getSecureUrl(widget.hostel['image']);
     final hostelId = widget.hostel['id']?.toString();
     final user = _auth.currentUser;
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    if (screenWidth > 900) {
+      return _buildDesktopDetails(context, isDark, textColor, primaryColor, name, location, price, rating, capacity, image, hostelId, user);
+    }
+
     return Scaffold(
       backgroundColor: scaffoldColor,
-      body: Stack(
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1000),
+          child: Stack(
         children: [
           CustomScrollView(
             physics: const BouncingScrollPhysics(),
@@ -507,7 +556,7 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
                             physics: const BouncingScrollPhysics(),
                             itemCount: (widget.hostel['gallery'] as List).length,
                             itemBuilder: (context, index) {
-                              return _buildGalleryImage((widget.hostel['gallery'] as List)[index]);
+                              return _buildGalleryImage(_getSecureUrl((widget.hostel['gallery'] as List)[index]));
                             }
                           ),
                         ),
@@ -552,7 +601,7 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
                       const SizedBox(height: 10),
                       Text(
                         "Experience the best student living at $name. We offer spacious rooms, high-speed internet, and a study-friendly environment. Located just 5 minutes from the main campus gate, you'll never be late for lectures.",
-                        style: TextStyle(fontSize: 15, color: textColor?.withOpacity(0.8), height: 1.6, letterSpacing: 0.3),
+                        style: TextStyle(fontSize: 15, color: textColor?.withValues(alpha: 0.8), height: 1.6, letterSpacing: 0.3),
                       ),
                       
                       const SizedBox(height: 30),
@@ -578,7 +627,7 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
               decoration: BoxDecoration(
                 color: cardColor,
                 boxShadow: [
-                  BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 30, offset: const Offset(0, -5)),
+                  BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 30, offset: const Offset(0, -5)),
                 ],
                 borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
               ),
@@ -632,7 +681,7 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
                           padding: const EdgeInsets.symmetric(horizontal: 36, vertical: 18),
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                           elevation: isFull ? 0 : 8,
-                          shadowColor: Colors.black.withOpacity(0.3),
+                          shadowColor: Colors.black.withValues(alpha: 0.3),
                         ),
                         child: _isBooking 
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
@@ -657,8 +706,163 @@ class _HostelDetailsPageState extends State<HostelDetailsPage> {
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
+  }
+
+  Widget _buildDesktopDetails(BuildContext context, bool isDark, Color? textColor, Color primaryColor, String name, String location, String price, String rating, String capacity, String image, String? hostelId, User? user) {
+     return Scaffold(
+       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+       body: Center(
+         child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 1400),
+            child: Padding(
+              padding: const EdgeInsets.only(top: 20),
+              child: Row(
+               crossAxisAlignment: CrossAxisAlignment.start,
+               children: [
+                  // LEFT COLUMN (Scrollable Content)
+                  Expanded(
+                    flex: 10,
+                    child: SingleChildScrollView(
+                       padding: const EdgeInsets.all(30),
+                       child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                             // Back Button & Title
+                             Row(
+                               children: [
+                                 IconButton(icon: Icon(Icons.arrow_back, color: textColor), onPressed: () => Navigator.pop(context)),
+                                 const SizedBox(width: 10),
+                                 Expanded(child: Text(name, style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: textColor))),
+                               ],
+                             ),
+                             const SizedBox(height: 20),
+                             
+                             // Main Image
+                             ClipRRect(
+                               borderRadius: BorderRadius.circular(24),
+                               child: CachedNetworkImage(imageUrl: image, height: 500, width: double.infinity, fit: BoxFit.cover),
+                             ),
+                             const SizedBox(height: 40),
+                             
+                             Text("Description", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                             const SizedBox(height: 10),
+                             Text(
+                                "Experience the best student living at $name. We offer spacious rooms, high-speed internet, and a study-friendly environment. Located just 5 minutes from the main campus gate, you'll never be late for lectures.",
+                                 style: TextStyle(fontSize: 16, height: 1.6, color: textColor?.withValues(alpha: 0.8)),
+                             ),
+                             
+                             const SizedBox(height: 40),
+                             Text("Amenities", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                             const SizedBox(height: 20),
+                             Wrap(
+                               spacing: 15, 
+                               runSpacing: 15, 
+                               children: (widget.hostel['amenities'] as List? ?? []).map<Widget>((a) => _buildAmenityChip(context, FontAwesomeIcons.check, a.toString())).toList()
+                             ),
+
+                             const SizedBox(height: 40),
+                             // Gallery Grid
+                             if ((widget.hostel['gallery'] as List?)?.isNotEmpty ?? false) ...[
+                               Text("Gallery", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: textColor)),
+                               const SizedBox(height: 20),
+                               GridView.builder(
+                                   shrinkWrap: true,
+                                   physics: const NeverScrollableScrollPhysics(),
+                                   gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(maxCrossAxisExtent: 250, crossAxisSpacing: 15, mainAxisSpacing: 15, childAspectRatio: 1.2),
+                                   itemCount: (widget.hostel['gallery'] as List).length,
+                                   itemBuilder: (c, i) => ClipRRect(
+                                     borderRadius: BorderRadius.circular(16),
+                                     child: CachedNetworkImage(imageUrl: _getSecureUrl((widget.hostel['gallery'] as List)[i]), fit: BoxFit.cover),
+                                   ),
+                                ),
+                             ],
+                             
+                             const SizedBox(height: 40),
+                             if (hostelId != null) ReviewsSection(hostelId: hostelId),
+                             const SizedBox(height: 100),
+                          ],
+                       ),
+                    ),
+                  ),
+                  
+                  // RIGHT COLUMN (Sticky Card)
+                  Container(
+                     width: 420,
+                     margin: const EdgeInsets.fromLTRB(0, 30, 30, 30),
+                     padding: const EdgeInsets.all(32),
+                     decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.08), blurRadius: 20, offset: const Offset(0,10))],
+                        border: Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+                     ),
+                     child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                           Text(location, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                           const SizedBox(height: 8),
+                           Row(
+                             crossAxisAlignment: CrossAxisAlignment.baseline,
+                             textBaseline: TextBaseline.alphabetic,
+                             children: [
+                               Text("GHS $price", style: TextStyle(fontSize: 36, fontWeight: FontWeight.w900, color: primaryColor)),
+                             ],
+                           ),
+                           Text("per semester", style: TextStyle(color: textColor?.withOpacity(0.6))),
+                           const SizedBox(height: 24),
+                           Divider(color: Colors.grey.withOpacity(0.1)),
+                           const SizedBox(height: 24),
+                           
+                           Row(children: [
+                             const Icon(Icons.star, color: Colors.amber, size: 20), 
+                             const SizedBox(width: 8),
+                             Text("$rating Rating", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
+                           ]),
+                           const SizedBox(height: 12),
+                           Row(children: [
+                             Icon(Icons.people_outline, color: primaryColor, size: 20),
+                             const SizedBox(width: 8),
+                             Text("$capacity / room capacity", style: TextStyle(fontWeight: FontWeight.w500, fontSize: 15, color: textColor)),
+                           ]),
+                           
+                           const SizedBox(height: 32),
+                           SizedBox(
+                             width: double.infinity,
+                             child: ElevatedButton(
+                                onPressed: _bookHostel,
+                                style: ElevatedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 22),
+                                  backgroundColor: primaryColor,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  elevation: 5,
+                                ),
+                                child: const Text("Book Now", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                             ),
+                           ),
+                           const SizedBox(height: 16),
+                           OutlinedButton.icon(
+                              onPressed: _showContactOptions,
+                              icon: const Icon(Icons.headset_mic_outlined),
+                              label: const Text("Contact Agent"),
+                              style: OutlinedButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 56),
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                              ),
+                           ),
+                        ],
+                     ),
+                  ),
+               ],
+            ),
+          ),
+         ),
+       ),
+     );
   }
 
   // ---------------------------------------------------------------------------

@@ -7,9 +7,15 @@ import 'package:stayhub/core/splash_screen.dart';
 import 'package:stayhub/firebase_options.dart';
 import 'package:stayhub/providers/locale_provider.dart';
 import 'package:stayhub/providers/theme_provider.dart';
-import 'package:stayhub/services/notification_service.dart'; // Added import
-import 'package:stayhub/services/payment_service.dart'; // Import PaymentService
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stayhub/services/notification_service.dart';
+import 'package:stayhub/services/payment_service.dart';
+import 'package:stayhub/services/deep_link_service.dart';
+import 'package:stayhub/services/connectivity_service.dart';
+import 'package:stayhub/core/offline_banner.dart';
+import 'package:audioplayers/audioplayers.dart';
+
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,19 +29,50 @@ void main() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
-    await dotenv.load(fileName: ".env");
-     PaymentService().initialize(); // Initialize Paystack
+    
+    // Explicitly Enable Offline Persistence
+    FirebaseFirestore.instance.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+
+    PaymentService().initialize();
+    ConnectivityService().initialize(); // Start monitoring network
   } catch (e) {
     debugPrint("Firebase/Env Initialization Error: $e");
-    // Continue running, as some features might work offline
   }
 
-  await NotificationService().init(); // Initialize NotificationService
+  // CONFIGURE AUDIO CONTEXT FOR SIMULTANEOUS PLAYBACK
+  AudioPlayer.global.setAudioContext(AudioContext(
+    android: AudioContextAndroid(
+      audioFocus: AndroidAudioFocus.none, 
+    ),
+  ));
+
+  NotificationService().initialize();
   runApp(const MyApp());
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  
+  @override
+  void initState() {
+    super.initState();
+    DeepLinkService().init(navigatorKey);
+  }
+
+  @override
+  void dispose() {
+    DeepLinkService().dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +84,7 @@ class MyApp extends StatelessWidget {
       child: Consumer2<ThemeProvider, LocaleProvider>(
         builder: (context, themeProvider, localeProvider, child) {
           return MaterialApp(
+            navigatorKey: navigatorKey,
             debugShowCheckedModeBanner: false,
             title: 'StayHub',
             themeMode: themeProvider.themeMode,
@@ -89,7 +127,15 @@ class MyApp extends StatelessWidget {
               ),
               cardTheme: const CardThemeData(color: Color(0xFF1c1c1e)),
             ),
-            home: const SplashScreen(), // Always start with the SplashScreen
+            home: const SplashScreen(),
+            builder: (context, child) {
+              return Stack(
+                children: [
+                  child!,
+                  const OfflineBanner(),
+                ],
+              );
+            },
           );
         },
       ),

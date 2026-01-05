@@ -3,7 +3,6 @@ import 'package:flutter/services.dart'; // For HapticFeedback
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:stayhub/services/firestore_service.dart';
 
 class NotificationsSettingsPage extends StatefulWidget {
   const NotificationsSettingsPage({super.key});
@@ -167,8 +166,11 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> w
     );
     if (picked != null) {
       setState(() {
-        if (isStart) _quietStart = picked;
-        else _quietEnd = picked;
+        if (isStart) {
+          _quietStart = picked;
+        } else {
+          _quietEnd = picked;
+        }
       });
       _saveSettings();
     }
@@ -220,9 +222,9 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> w
                       ],
                     ),
                   ),
-                  TextButton(
+                  const TextButton(
                     onPressed: openAppSettings,
-                    child: const Text("Fix"),
+                    child: Text("Fix"),
                   )
                 ],
               ),
@@ -251,7 +253,7 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> w
               title: const Text("Pause All", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               subtitle: const Text("Temporarily mute all StayHub alerts."),
               value: _pauseAll,
-              activeColor: Colors.orange,
+              activeThumbColor: Colors.orange,
               onChanged: (val) {
                 setState(() => _pauseAll = val);
                 _saveSettings();
@@ -330,7 +332,7 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> w
                             Switch(
                               value: _quietModeEnabled,
                               onChanged: (v) { setState(() => _quietModeEnabled = v); _saveSettings(); },
-                              activeColor: Colors.indigoAccent,
+                              activeThumbColor: Colors.indigoAccent,
                             ),
                           ],
                         ),
@@ -402,7 +404,7 @@ class _NotificationsSettingsPageState extends State<NotificationsSettingsPage> w
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 13)),
       value: value,
       onChanged: onChanged,
-      activeColor: color,
+      activeThumbColor: color,
     );
   }
 

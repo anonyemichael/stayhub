@@ -4,20 +4,69 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:stayhub/features/chat/chat_page.dart';
 
-class StudentInboxPage extends StatelessWidget {
+class StudentInboxPage extends StatefulWidget {
   const StudentInboxPage({super.key});
+
+  @override
+  State<StudentInboxPage> createState() => _StudentInboxPageState();
+}
+
+class _StudentInboxPageState extends State<StudentInboxPage> {
+  String? _selectedChatId;
+  String? _selectedOtherUserName;
+  String? _selectedOtherUserId;
 
   @override
   Widget build(BuildContext context) {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) return const Scaffold(body: Center(child: Text("Please log in")));
 
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 900;
+
     return Scaffold(
-      appBar: AppBar(
+      appBar: isDesktop ? null : AppBar(
         title: const Text("Messages"),
         elevation: 0,
       ),
-      body: StreamBuilder<QuerySnapshot>(
+      body: isDesktop 
+      ? Row(
+          children: [
+            // Sidebar
+            SizedBox(
+               width: 380,
+               child: _buildChatList(user, isDesktop: true),
+            ),
+            VerticalDivider(width: 1, color: Colors.grey.withOpacity(0.1)),
+            // Main Content
+            Expanded(
+               child: _selectedChatId == null
+               ? Center(
+                   child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                         Icon(Icons.chat_bubble_outline, size: 80, color: Colors.grey.withOpacity(0.2)),
+                         const SizedBox(height: 20),
+                         Text("Select a conversation", style: TextStyle(color: Colors.grey.withOpacity(0.5), fontSize: 18)),
+                      ],
+                   )
+               )
+               : ChatPage(
+                   key: ValueKey(_selectedChatId), // Force rebuild on change
+                   chatId: _selectedChatId!,
+                   otherUserName: _selectedOtherUserName ?? "Chat",
+                   otherUserId: _selectedOtherUserId ?? "",
+                   isEmbedded: true,
+                 )
+            )
+          ],
+        )
+      : _buildChatList(user),
+    );
+  }
+
+  Widget _buildChatList(User user, {bool isDesktop = false}) {
+    return StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
             .collection('chats')
             .where('users', arrayContains: user.uid)
@@ -44,177 +93,142 @@ class StudentInboxPage extends StatelessWidget {
             );
           }
 
-          // Client-side sorting to avoid missing index error
+          // Client-side sorting
           final docs = snapshot.data!.docs;
           docs.sort((a, b) {
             final aData = a.data() as Map<String, dynamic>;
             final bData = b.data() as Map<String, dynamic>;
             final aTime = (aData['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime(1970);
             final bTime = (bData['lastMessageTime'] as Timestamp?)?.toDate() ?? DateTime(1970);
-            return bTime.compareTo(aTime); // Descending
+            return bTime.compareTo(aTime); 
           });
 
-          return ListView.separated(
-            itemCount: docs.length,
-            separatorBuilder: (context, index) => const Divider(height: 1),
-            itemBuilder: (context, index) {
-              final chatData = docs[index].data() as Map<String, dynamic>;
-              final users = List<String>.from(chatData['users'] ?? []);
-              final otherUserId = users.firstWhere((id) => id != user.uid, orElse: () => "");
-              
-              if (otherUserId.isEmpty) return const SizedBox.shrink();
+          return Column(
+            children: [
+               if (isDesktop) 
+                  Container(
+                     padding: const EdgeInsets.all(20),
+                     alignment: Alignment.centerLeft,
+                     child: const Text("Messages", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                  ),
+               Expanded(
+                 child: ListView.separated(
+                  itemCount: docs.length,
+                  separatorBuilder: (context, index) => const Divider(height: 1, indent: 80),
+                  itemBuilder: (context, index) {
+                    final chatData = docs[index].data() as Map<String, dynamic>;
+                    final users = List<String>.from(chatData['users'] ?? []);
+                    final otherUserId = users.firstWhere((id) => id != user.uid, orElse: () => "");
+                    
+                    if (otherUserId.isEmpty) return const SizedBox.shrink();
 
-              return FutureBuilder<DocumentSnapshot>(
-                future: FirebaseFirestore.instance.collection('users').doc(otherUserId).get(),
-                builder: (context, userSnapshot) {
-                  
-                  String name = "User";
-                  String? photoUrl;
+                    return FutureBuilder<DocumentSnapshot>(
+                      future: FirebaseFirestore.instance.collection('users').doc(otherUserId).get(),
+                      builder: (context, userSnapshot) {
+                        
+                        String name = "User";
+                        String? photoUrl;
 
-                  if (userSnapshot.hasData && userSnapshot.data!.exists) {
-                    final userData = userSnapshot.data!.data() as Map<String, dynamic>;
-                    name = userData['name'] ?? "User";
-                    photoUrl = userData['photoUrl'];
-                  }
+                        if (userSnapshot.hasData && userSnapshot.data!.exists) {
+                          final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+                          name = userData['name'] ?? "User";
+                          photoUrl = userData['photoUrl'];
+                        }
+                        
+                        String displayTitle = name;
+                        if (chatData['hostelName'] != null) {
+                           final savedStudentName = chatData['studentName'] as String?;
+                           if (user.displayName == savedStudentName) {
+                              displayTitle = chatData['hostelName'] ?? name;
+                           } else {
+                              displayTitle = savedStudentName ?? name;
+                           }
+                        }
 
-                  // Context override:
-                  // If I am the student, I want to see "Hostel Name" (if available) instead of "Agent Name".
-                  // If I am the agent, I want to see "Student Name".
-                  
-                  // Simple heuristic: If chat has 'hostelName' and I am NOT the agent (or logic: just show hostel name if it's not my name?) 
-                  // Better: The 'users' array has 2 IDs. We found 'otherUserId'.
-                  
-                  // If chatData has 'hostelName', let's use it if we are the student?
-                  // We don't easily know strictly "who is who" without roles, but we can assume:
-                  // If the 'other user' is the Agent (receives money etc), the student sees Hostel Name.
-                  // But easier: check if chatData['hostelName'] is present. 
-                  // If present, verify if we should show it.
-                  
-                  String displayTitle = name;
-                  if (chatData['hostelName'] != null) {
-                     // We need a way to know if 'otherUserId' is the Agent. 
-                     // Usually, the one creating the hostel is the agent.
-                     // Let's assume for this specific requirement: Student sees Hostel Name.
-                     // The student won't have the same name as the hostel usually.
-                     // So we can use hostelName as the primary label.
-                     
-                     // Wait, if I am the Agent, I want to see the *Student Name*, not the Hostel Name (which I own).
-                     // Ideally, chat metadata should have 'studentId' and 'agentId'.
-                     // We didn't store those explicitly as "roles" yet, just 'users'.
-                     // But we added 'studentName' to metadata in BookingsPage.
-                     
-                     final savedStudentName = chatData['studentName'] as String?;
-                     
-                     if (user!.displayName == savedStudentName) {
-                        // I am the student. Show Hostel Name.
-                        displayTitle = chatData['hostelName'] ?? name;
-                     } else {
-                        // I am the agent (or someone else). Show Student Name.
-                        displayTitle = savedStudentName ?? name;
-                     }
-                  }
+                        final lastMsg = chatData['lastMessage'] ?? "";
+                        final time = (chatData['lastMessageTime'] as Timestamp?)?.toDate();
+                        final timeString = time != null ? DateFormat('h:mm a').format(time) : "";
+                        
+                        final isSelected = _selectedChatId == docs[index].id;
 
-                  final lastMsg = chatData['lastMessage'] ?? "";
-                  final time = (chatData['lastMessageTime'] as Timestamp?)?.toDate();
-                  final timeString = time != null ? DateFormat('MMM d, h:mm a').format(time) : "";
-
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(16),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withOpacity(0.05),
-                          blurRadius: 10,
-                          offset: const Offset(0, 4),
-                        )
-                      ],
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      borderRadius: BorderRadius.circular(16),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(16),
-                        onTap: () {
-                          Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
-                            chatId: docs[index].id,
-                            otherUserId: otherUserId,
-                            otherUserName: displayTitle,
-                          )));
-                        },
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Row(
-                            children: [
-                              Stack(
+                        return Material(
+                          color: (isDesktop && isSelected) ? Theme.of(context).primaryColor.withOpacity(0.1) : Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              if (isDesktop) {
+                                 setState(() {
+                                    _selectedChatId = docs[index].id;
+                                    _selectedOtherUserName = displayTitle;
+                                    _selectedOtherUserId = otherUserId;
+                                 });
+                              } else {
+                                Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
+                                  chatId: docs[index].id,
+                                  otherUserId: otherUserId,
+                                  otherUserName: displayTitle,
+                                )));
+                              }
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                              child: Row(
                                 children: [
                                   CircleAvatar(
-                                    radius: 28,
-                                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl!) : null,
+                                    radius: 24,
+                                    backgroundImage: photoUrl != null ? NetworkImage(photoUrl) : null,
                                     backgroundColor: Colors.blueAccent.withOpacity(0.1),
-                                    child: photoUrl == null ? const Icon(Icons.person, color: Colors.blueAccent) : null,
+                                    child: photoUrl == null ? const Icon(Icons.person, color: Colors.blueAccent, size: 20) : null,
                                   ),
-                                  // Online Indicator (Mock)
-                                  Positioned(
-                                    bottom: 0,
-                                    right: 0,
-                                    child: Container(
-                                      width: 14, height: 14,
-                                      decoration: BoxDecoration(
-                                        color: Colors.green,
-                                        shape: BoxShape.circle,
-                                        border: Border.all(color: Theme.of(context).cardColor, width: 2),
-                                      ),
+                                  const SizedBox(width: 16),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                displayTitle, 
+                                                style: TextStyle(
+                                                   fontWeight: isSelected ? FontWeight.w900 : FontWeight.bold, 
+                                                   fontSize: 16,
+                                                   color: isSelected ? Theme.of(context).primaryColor : null,
+                                                ),
+                                                maxLines: 1, 
+                                                overflow: TextOverflow.ellipsis
+                                              ),
+                                            ),
+                                            if (timeString.isNotEmpty)
+                                              Text(
+                                                timeString, 
+                                                style: TextStyle(color: Colors.grey[400], fontSize: 12)
+                                              ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          lastMsg, 
+                                          maxLines: 1, 
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(color: Colors.grey[600], fontSize: 14),
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Row(
-                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            displayTitle, 
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                                            maxLines: 1, 
-                                            overflow: TextOverflow.ellipsis
-                                          ),
-                                        ),
-                                        if (timeString.isNotEmpty)
-                                          Text(
-                                            timeString, 
-                                            style: TextStyle(color: Colors.grey[400], fontSize: 12, fontWeight: FontWeight.w500)
-                                          ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      lastMsg, 
-                                      maxLines: 1, 
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(color: Colors.grey[600], fontSize: 14),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              );
-            },
+                        );
+                      },
+                    );
+                  },
+                ),
+               ),
+            ],
           );
         },
-      ),
     );
   }
 }

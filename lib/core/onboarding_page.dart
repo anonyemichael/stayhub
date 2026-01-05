@@ -168,7 +168,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
                          },
                          backgroundColor: Colors.white,
                          elevation: 0,
-                         child: Icon(Icons.arrow_forward_ios, color: Colors.black, size: 20),
+                         child: const Icon(Icons.arrow_forward_ios, color: Colors.black, size: 20),
                       )
                    ],
                 ),

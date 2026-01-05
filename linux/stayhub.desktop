@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=StayHub
+Comment=Hostel booking application
+Exec=stayhub %u
+Icon=stayhub
+Terminal=false
+Type=Application
+Categories=Utility;
+MimeType=x-scheme-handler/stayhub;
+StartupNotify=true

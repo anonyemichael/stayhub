@@ -1,9 +1,10 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:stayhub/features/bookings/bookings_page.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'dart:ui' as ui;
-import 'dart:io';
+// import 'dart:io' show File;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
@@ -25,6 +26,11 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
   bool _isCancelling = false;
 
   Future<void> _captureAndSaveTicket() async {
+    if (kIsWeb) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Ticket saving is currently only supported on mobile devices.")));
+      return;
+    }
+    
     setState(() => _isSaving = true);
     try {
       // 1. Wait for end of frame to ensure painting is done
@@ -43,13 +49,15 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
       
       Uint8List pngBytes = byteData.buffer.asUint8List();
 
-      final tempDir = await getTemporaryDirectory();
-      final file = await File('${tempDir.path}/stayhub_ticket_${widget.booking.id}.png').create();
-      await file.writeAsBytes(pngBytes);
+      // 3. Share directly from memory using XFile
+      final xFile = XFile.fromData(
+        pngBytes,
+        mimeType: 'image/png',
+        name: 'stayhub_ticket_${widget.booking.id}.png',
+      );
 
-      // 3. Share
       await Share.shareXFiles(
-        [XFile(file.path)], 
+        [xFile], 
         text: 'My StayHub Booking Ticket - ${widget.booking.hostelName}'
       );
       
@@ -129,7 +137,7 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
       });
       
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cancellation Request Sent.")));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Cancellation Request Sent."), backgroundColor: Colors.red));
       }
     } catch (e) {
        if (mounted) {
@@ -158,11 +166,18 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
       body: StreamBuilder<DocumentSnapshot>(
         stream: FirebaseFirestore.instance.collection('bookings').doc(widget.booking.id).snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError) return Center(child: Text("Error: ${snapshot.error}"));
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-
-          // Reconstruct updated booking object
-          final booking = Booking.fromFirestore(snapshot.data!);
+          // FALLBACK STRATEGY:
+          // If we fail to load the fresh document (e.g. deleted, network error, permission),
+          // we should still show the ticket using the data passed from the previous screen.
+          
+          Booking booking;
+          
+          if (snapshot.hasError || !snapshot.hasData || (snapshot.data != null && !snapshot.data!.exists)) {
+             debugPrint("Using fallback booking data due to error/missing doc.");
+             booking = widget.booking;
+          } else {
+             booking = Booking.fromFirestore(snapshot.data!);
+          }
 
           return Center(
             child: SingleChildScrollView(
@@ -195,22 +210,33 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
                         ),
                       ),
                       
-                      // Only show Cancel if not cancelled
-                      if (booking.status != 'CANCELLED' && booking.status != 'COMPLETED') ...[
-                         const SizedBox(width: 16),
-                         Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isCancelling ? null : () => _requestRefund(booking),
-                            icon: const Icon(Icons.cancel_outlined, color: Colors.red),
-                            label: const Text("Cancel", style: TextStyle(color: Colors.red)),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 16),
-                              side: const BorderSide(color: Colors.red),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                            ),
+                      // Replaced Cancel Button with Policy Info
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () {
+                             showDialog(
+                               context: context,
+                               builder: (ctx) => AlertDialog(
+                                 title: const Text("Cancellation Policy"),
+                                 content: const Text(
+                                   "To protect both students and agents, bookings cannot be cancelled via the app once paid.\n\n"
+                                   "We strongly recommend visiting the hostel or contacting the agent to verify the room before making a payment.\n\n"
+                                   "If you have a critical issue, please contact StayHub support."
+                                 ),
+                                 actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text("Understood"))],
+                               )
+                             );
+                          },
+                          icon: Icon(Icons.info_outline, color: isDark ? Colors.white70 : Colors.grey[700]),
+                          label: Text("Policy", style: TextStyle(color: isDark ? Colors.white70 : Colors.grey[700])),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            side: BorderSide(color: isDark ? Colors.white24 : Colors.grey[400]!),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                           ),
                         ),
-                      ]
+                      ),
                     ],
                   ),
                   

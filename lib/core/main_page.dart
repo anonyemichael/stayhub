@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart'; // For HapticFeedback
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Added
 import 'package:stayhub/features/home/home_page.dart';
 import 'package:stayhub/features/clips/clips_page.dart';
 import 'package:stayhub/features/map/map_page.dart';
@@ -18,16 +20,35 @@ class MainPage extends StatefulWidget {
 
 class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
+  bool _isAdmin = false;
 
   @override
   void initState() {
     super.initState();
     _checkAnnouncements();
+    _checkAdminStatus();
+  }
+
+  Future<void> _checkAdminStatus() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // Check if user is in 'admins' collection
+      final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.email).get();
+      if (adminDoc.exists) {
+        if (mounted) setState(() => _isAdmin = true);
+        return;
+      }
+      
+      // Also check specific hardcoded super admins
+      const superAdmins = ['anonyemichael6@gmail.com', 'admin@stayhub.com'];
+      if (user.email != null && superAdmins.contains(user.email)) {
+          if (mounted) setState(() => _isAdmin = true);
+      }
+    }
   }
 
   Future<void> _checkAnnouncements() async {
-    // Simple check for recent critical announcements (last 24 hours)
-    // In a real app, track 'lastSeenAnnouncement' in SharedPreferences
+    // Check for recent critical announcements (last 24 hours)
     try {
       final now = DateTime.now();
       final yesterday = now.subtract(const Duration(hours: 24));
@@ -35,11 +56,23 @@ class _MainPageState extends State<MainPage> {
       final query = await FirebaseFirestore.instance.collection('announcements')
           .where('isActive', isEqualTo: true)
           .where('createdAt', isGreaterThan: Timestamp.fromDate(yesterday))
+          .orderBy('createdAt', descending: true) 
           .limit(1)
           .get();
 
       if (query.docs.isNotEmpty && mounted) {
-        final data = query.docs.first.data();
+        final doc = query.docs.first;
+        final docId = doc.id;
+        
+        // Check SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        final lastSeenId = prefs.getString('last_seen_announcement_id');
+
+        if (lastSeenId == docId) {
+          return; // Already seen this specific announcement
+        }
+
+        final data = doc.data();
         final title = data['title'] ?? 'Announcement';
         final body = data['body'] ?? '';
         
@@ -47,9 +80,18 @@ class _MainPageState extends State<MainPage> {
         showDialog(
           context: context,
           builder: (context) => AlertDialog(
-            title: Row(children: [const Icon(Icons.campaign, color: Colors.orange), const SizedBox(width: 10), Text(title)]),
-            content: Text(body),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text("Got it"))],
+            title: Row(children: [const Icon(Icons.campaign, color: Colors.orange), const SizedBox(width: 10), Expanded(child: Text(title, overflow: TextOverflow.ellipsis))]),
+            content: SingleChildScrollView(child: Text(body)),
+            actions: [
+              TextButton(
+                onPressed: () {
+                   // Mark as seen when dismissed
+                   prefs.setString('last_seen_announcement_id', docId);
+                   Navigator.pop(context);
+                }, 
+                child: const Text("Got it")
+              )
+            ],
           ),
         );
       }
@@ -64,10 +106,10 @@ class _MainPageState extends State<MainPage> {
 
     final List<Widget> pages = [
       const HomePage(),
-      ClipsPage(isActive: _currentIndex == 1), // Pass active state
+      ClipsPage(isActive: _currentIndex == 1, isAdmin: _isAdmin), // Pass active state and admin status
       MapPage(isActive: _currentIndex == 2), // Pass active state
       const BookingsPage(),
-      ProfilePage(), // Removed const
+      const ProfilePage(), // Removed const
     ];
 
     return Scaffold(

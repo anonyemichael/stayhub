@@ -6,7 +6,8 @@ import 'package:stayhub/features/agent/add_hostel_page.dart';
 import 'package:stayhub/features/agent/add_clip_page.dart';
 
 class AdminHostelsView extends StatefulWidget {
-  const AdminHostelsView({super.key});
+  final bool isSuper;
+  const AdminHostelsView({super.key, this.isSuper = false}); // Default false
 
   @override
   State<AdminHostelsView> createState() => _AdminHostelsViewState();
@@ -20,7 +21,6 @@ class _AdminHostelsViewState extends State<AdminHostelsView> with SingleTickerPr
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _tabController.addListener(() {
-       // Rebuild to show/hide FAB based on tab index
        if (mounted) setState(() {});
     });
   }
@@ -57,9 +57,9 @@ class _AdminHostelsViewState extends State<AdminHostelsView> with SingleTickerPr
       ),
       body: TabBarView(
         controller: _tabController,
-        children: const [
-          _HostelList(isPending: true),
-          _HostelList(isPending: false),
+        children: [
+          _HostelList(isPending: true, isSuper: widget.isSuper),
+          _HostelList(isPending: false, isSuper: widget.isSuper),
         ],
       ),
       floatingActionButton: _tabController.index == 1 
@@ -95,12 +95,12 @@ class _AdminHostelsViewState extends State<AdminHostelsView> with SingleTickerPr
 
 class _HostelList extends StatelessWidget {
   final bool isPending;
-  const _HostelList({required this.isPending});
+  final bool isSuper;
+  const _HostelList({required this.isPending, required this.isSuper});
 
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot>(
-      // If pending, look for status 'pending' (or null for legacy), else 'approved'
       stream: FirebaseFirestore.instance.collection('hostels').snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
@@ -204,16 +204,17 @@ class _HostelList extends StatelessWidget {
                                    onTap: () => _approveHostel(context, docs[index].id)
                                  ),
                                ),
-                             if (isPending) const SizedBox(width: 12),
-                             Expanded(
-                               child: _ActionButton(
-                                 label: "Delete",
-                                 icon: Icons.delete_outline_rounded, 
-                                 color: Colors.redAccent, 
-                                 isFilled: false,
-                                 onTap: () => _deleteHostel(context, docs[index].id)
+                             if (isPending && isSuper) const SizedBox(width: 12),
+                             if (isSuper)
+                               Expanded(
+                                 child: _ActionButton(
+                                   label: "Delete",
+                                   icon: Icons.delete_outline_rounded, 
+                                   color: Colors.redAccent, 
+                                   isFilled: false,
+                                   onTap: () => _deleteHostel(context, docs[index].id)
+                                 ),
                                ),
-                             ),
                            ],
                          )
                        ],
@@ -230,7 +231,7 @@ class _HostelList extends StatelessWidget {
 
   Future<void> _approveHostel(BuildContext context, String docId) async {
     await FirebaseFirestore.instance.collection('hostels').doc(docId).update({'status': 'approved'});
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel Approved!")));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Row(children: [Icon(Icons.check, color: Colors.white), SizedBox(width: 8), Text("Approved")]), backgroundColor: Colors.green));
   }
 
   Future<void> _deleteHostel(BuildContext context, String docId) async {

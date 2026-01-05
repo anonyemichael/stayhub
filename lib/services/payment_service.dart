@@ -1,22 +1,31 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:stayhub/core/api_config.dart';
 import 'package:flutter/material.dart';
 import 'package:stayhub/services/paystack_webview.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 
 class PaymentService {
   
-  // ⚠️ IMPLEMENTATION NOTE: 
-  // We are performing direct API calls because Firebase Cloud Functions (Blaze plan) 
-  // is not currently enabled. 
-  // FOR PRODUCTION: It is highly recommended to move this logic to a backend 
-  // to protect your Secret Key.
-  
-  static const String _secretKey = "sk_test_dd38d5d75c78c6aa726c36363469a0b1e086b7f3";
+  // ✅ SECURE IMPLEMENTATION 
+  // Using Render Backend via ApiConfig
   final String _callbackUrl = "https://stayhub.app/payment-callback";
 
-  void initialize() {}
+  // Persistent Client for connection reuse (Faster)
+  static final http.Client _client = http.Client();
+  
+  void initialize() {
+     prewarm();
+  }
+
+  /// Wake up functions to avoid cold starts
+  Future<void> prewarm() async {
+    try {
+      _client.get(Uri.parse(ApiConfig.ping)).timeout(const Duration(seconds: 2));
+    } catch (_) {}
+  }
 
   /// Standard Charge
   Future<String?> chargeCard({
@@ -61,7 +70,8 @@ class PaymentService {
     String? subAccountCode,
     double? transactionCharge,
   }) async {
-    // 1. Initialize Transaction via Direct API
+    // 1. Initialize Transaction via Backend
+    // Show Loading? Usually handled by UI calling this.
     final authUrl = await _initializeTransactionApi(
       email: email,
       amount: amount,
@@ -71,34 +81,73 @@ class PaymentService {
     );
 
     if (authUrl == null) {
-      if (context.mounted) _showErrorDialog(context, "Failed to initialize payment. Check internet.");
+      if (context.mounted) _showErrorDialog(context, "Payment Server unreachable. This might be a temporary server delay. Please try again in a few moments.");
       return null;
     }
 
-    // 2. Launch WebView
-    if (!context.mounted) return null;
-    
-    final bool? result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PaystackWebView(
-          authUrl: authUrl, 
-          reference: reference, 
-          callbackUrl: _callbackUrl
-        ),
-      ),
-    );
+    // 2. Launch (Web vs Mobile)
+    if (kIsWeb) {
+       // Web: Launch in new tab
+       if (await canLaunchUrl(Uri.parse(authUrl))) {
+         await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+       } else {
+         if (context.mounted) _showErrorDialog(context, "Could not open payment page.");
+         return null;
+       }
 
-    if (result == true) {
-      final verified = await _verifyTransaction(reference);
-      if (verified) {
-         return reference;
-      } else {
-        if (context.mounted) _showErrorDialog(context, "Payment verification failed.");
+       // Web: Manual Verification Dialog
+       if (!context.mounted) return null;
+       final bool? verified = await showDialog<bool>(
+         context: context,
+         barrierDismissible: false,
+         builder: (ctx) => AlertDialog(
+           title: const Text("Completing Payment"),
+           content: const Text("A payment page was opened in a new tab.\n\nDid you complete the payment?"),
+           actions: [
+             TextButton(
+               onPressed: () => Navigator.pop(ctx, false),
+               child: const Text("No, Cancel"),
+             ),
+             TextButton(
+               onPressed: () => Navigator.pop(ctx, true),
+               child: const Text("Yes, I Paid"),
+             ),
+           ],
+         ),
+       );
+
+       if (verified == true) {
+         final isSuccess = await _verifyTransaction(reference);
+         if (isSuccess) return reference;
+         if (context.mounted) _showErrorDialog(context, "Payment verification failed. Please check your bank.");
+       }
+       return null;
+
+    } else {
+      // Mobile: Use WebView
+      if (!context.mounted) return null;
+      
+      final bool? result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PaystackWebView(
+            authUrl: authUrl, 
+            reference: reference, 
+            callbackUrl: _callbackUrl
+          ),
+        ),
+      );
+  
+      if (result == true) {
+        final verified = await _verifyTransaction(reference);
+        if (verified) {
+           return reference;
+        } else {
+          if (context.mounted) _showErrorDialog(context, "Payment verification could not be confirmed automatically. Please contact support.");
+        }
       }
+      return null;
     }
-    
-    return null;
   }
 
   Future<String?> _initializeTransactionApi({
@@ -114,27 +163,32 @@ class PaymentService {
           "email": email,
           "amount": amountKobo,
           "reference": reference,
-          "currency": "GHS",
-          "callback_url": _callbackUrl,
-          "channels": ["card", "mobile_money", "ussd"],
+          "metadata": {
+            "cancel_action": "https://stayhub.app/cancel",
+             "custom_fields": [
+                {
+                    "display_name": "Send Receipt",
+                    "variable_name": "send_receipt",
+                    "value": "true"
+                }
+             ]
+          }
       };
       
       if (subAccountCode != null) {
          body["subaccount"] = subAccountCode;
-         body["bearer"] = "subaccount";
          if (transactionCharge != null) {
             body["transaction_charge"] = (transactionCharge * 100).toInt();
          }
       }
 
-      final response = await http.post(
-        Uri.parse('https://api.paystack.co/transaction/initialize'), 
+      final response = await _client.post(
+        Uri.parse(ApiConfig.initializePayment), 
         headers: {
-          'Authorization': 'Bearer $_secretKey',
           'Content-Type': 'application/json'
         },
         body: jsonEncode(body),
-      );
+      ).timeout(const Duration(seconds: 30)); // INcreased to 30s to handle cold starts
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -152,12 +206,9 @@ class PaymentService {
   
   Future<bool> _verifyTransaction(String reference) async {
     try {
-      final response = await http.get(
-        Uri.parse('https://api.paystack.co/transaction/verify/$reference'),
-        headers: {
-          'Authorization': 'Bearer $_secretKey',
-        },
-      );
+      final response = await _client.get(
+        Uri.parse('${ApiConfig.verifyPayment}?reference=$reference'),
+      ).timeout(const Duration(seconds: 5)); // FAST VERIFY (5s)
       
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -192,45 +243,16 @@ class PaymentService {
 
   Future<List<Map<String, dynamic>>> getBanks() async {
     try {
-      // 1. Fetch Commercial Banks
-      final banksResponse = await http.get(
-        Uri.parse("https://api.paystack.co/bank?currency=GHS"),
-         headers: {'Authorization': 'Bearer $_secretKey'}
-      );
-
-      // 2. Fetch Mobile Money
-      final momoResponse = await http.get(
-        Uri.parse("https://api.paystack.co/bank?currency=GHS&type=mobile_money"),
-        headers: {'Authorization': 'Bearer $_secretKey'}
-      );
+      final response = await _client.get(
+        Uri.parse(ApiConfig.getBanks)
+      ).timeout(const Duration(seconds: 20)); // Longer timeout for large list
       
-      List<dynamic> allBanks = [];
-
-      if (banksResponse.statusCode == 200) {
-        final data = jsonDecode(banksResponse.body);
-        if (data['status'] == true) {
-           allBanks.addAll(data['data']);
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (data['status'] == true && data['data'] != null) {
+          return List<Map<String, dynamic>>.from(data['data']);
         }
       }
-
-      if (momoResponse.statusCode == 200) {
-        final data = jsonDecode(momoResponse.body);
-        if (data['status'] == true) {
-          // Add only unique codes
-          final existingCodes = allBanks.map((e) => e['code']).toSet();
-          for (var item in data['data']) {
-            if (!existingCodes.contains(item['code'])) {
-              allBanks.add(item);
-            }
-          }
-        }
-      }
-
-      // Sort Alphabetically
-      allBanks.sort((a, b) => (a['name'] as String).compareTo(b['name'] as String));
-
-      return List<Map<String, dynamic>>.from(allBanks);
-
     } catch (e) {
       debugPrint("Error fetching banks: $e");
     }
@@ -242,12 +264,13 @@ class PaymentService {
     required String bankCode,
     required String accountNumber,
     required String percentage, 
+    required String email,
+    String? contactName, 
   }) async {
     try {
-      final response = await http.post(
-        Uri.parse('https://api.paystack.co/subaccount'), 
+      final response = await _client.post(
+        Uri.parse(ApiConfig.createSubAccount), 
         headers: {
-          'Authorization': 'Bearer $_secretKey',
           'Content-Type': 'application/json'
         },
         body: jsonEncode({
@@ -255,11 +278,14 @@ class PaymentService {
           "settlement_bank": bankCode,
           "account_number": accountNumber,
           "percentage_charge": double.tryParse(percentage) ?? 0.0,
+          "primary_contact_email": email,
+          "primary_contact_name": contactName,
         })
-      );
+      ).timeout(const Duration(seconds: 15));
 
       final data = jsonDecode(response.body);
       
+      // Check for both 200 and 201 (Created)
       if (response.statusCode == 200 || response.statusCode == 201) {
         if (data['status'] == true) {
            return data['data']['subaccount_code'];

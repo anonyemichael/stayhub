@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:stayhub/services/app_config_service.dart';
 
 class AdminConfigView extends StatefulWidget {
   const AdminConfigView({super.key});
@@ -14,13 +13,13 @@ class _AdminConfigViewState extends State<AdminConfigView> {
   // final _configService = AppConfigService(); // REMOVED to force direct Firestore usage
 
   // Controllers for Support Config
-  final _studentWhatsappCtrl = TextEditingController();
+  final _whatsappCtrl = TextEditingController(); // Was _adminPhoneCtrl
+  final _callCtrl = TextEditingController();    // New
   final _studentEmailCtrl = TextEditingController();
   final _agentHelpEmailCtrl = TextEditingController();
   
   // Controllers for Admin Contact
-  final _adminPhoneCtrl = TextEditingController();
-  final _adminEmailCtrl = TextEditingController();
+  final _adminEmailCtrl = TextEditingController(); // Reused for student support email too
   
   // Controllers for Broadcast
   final _broadcastTitleCtrl = TextEditingController();
@@ -38,7 +37,6 @@ class _AdminConfigViewState extends State<AdminConfigView> {
   Future<void> _loadCurrentConfig() async {
     setState(() => _isLoading = true);
     try {
-      // Direct Firestore Fetch (Bypassing Service to ensure consistency)
       final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
       final data = doc.data() ?? {};
       
@@ -46,14 +44,13 @@ class _AdminConfigViewState extends State<AdminConfigView> {
       final agentSupport = data['agent_support'] as Map<String, dynamic>? ?? {};
       final adminContact = data['admin_contact'] as Map<String, dynamic>? ?? {};
 
-      // Logic: Admin Phone controls 'Student WhatsApp' essentially.
-      // We load from student_support as primary, fallback to admin_contact
-      _adminPhoneCtrl.text = studentSupport['whatsapp'] ?? adminContact['phone'] ?? '233509483401';
-      _adminEmailCtrl.text = studentSupport['email'] ?? adminContact['email'] ?? 'support@stayhub.app';
+      // Load Values or Defaults
+      _whatsappCtrl.text = studentSupport['whatsapp'] ?? '233509483401';
+      _callCtrl.text = adminContact['phone'] ?? '233533311532';
       
-      _agentHelpEmailCtrl.text = agentSupport['email'] ?? 'agents@stayhub.app';
+      _adminEmailCtrl.text = studentSupport['email'] ?? adminContact['email'] ?? 'support@stayhubgh.com';
+      _agentHelpEmailCtrl.text = agentSupport['email'] ?? 'support@stayhubgh.com';
 
-      // Cleaned up unused controllers: _studentWhatsappCtrl, _studentEmailCtrl unused by new UI
     } catch (e) {
       debugPrint("Error loading config: $e");
     } finally {
@@ -61,40 +58,41 @@ class _AdminConfigViewState extends State<AdminConfigView> {
     }
   }
 
+  String _sanitizePhone(String original) {
+    String p = original.trim();
+    if (p.startsWith('0')) return '233${p.substring(1)}';
+    if (p.startsWith('+')) return p.substring(1);
+    return p;
+  }
+
   Future<void> _saveConfig() async {
     if (!_contactFormKey.currentState!.validate()) return;
     
     setState(() => _isLoading = true);
 
-    // Sanitize Phone: Default to Ghana (233) if user types 0...
-    String phone = _adminPhoneCtrl.text.trim();
-    if (phone.startsWith('0')) {
-      phone = '233${phone.substring(1)}';
-    } else if (phone.startsWith('+')) {
-      phone = phone.substring(1);
-    }
+    String whatsapp = _sanitizePhone(_whatsappCtrl.text);
+    String call = _sanitizePhone(_callCtrl.text);
 
     try {
-      // Direct Firestore Write (config/app_config)
       await FirebaseFirestore.instance.collection('config').doc('app_config').set({
-        // 1. Universal Student Support (used by HelpPage)
+        // 1. Universal Student Support
         'student_support': {
-          'whatsapp': phone,
+          'whatsapp': whatsapp,
           'email': _adminEmailCtrl.text.trim(),
         },
-        // 2. Agent Support (Independent)
+        // 2. Agent Support
         'agent_support': {
           'email': _agentHelpEmailCtrl.text.trim(),
         },
-        // 3. Admin Contact (Legacy/Global backup)
+        // 3. Admin Contact (Calls Fallback)
         'admin_contact': {
-          'phone': phone,
+          'phone': call,
           'email': _adminEmailCtrl.text.trim(),
         }
       }, SetOptions(merge: true));
       
-      // Update the UI controller to reflect the saved format
-      _adminPhoneCtrl.text = phone;
+      _whatsappCtrl.text = whatsapp;
+      _callCtrl.text = call;
       
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -111,8 +109,8 @@ class _AdminConfigViewState extends State<AdminConfigView> {
       if (mounted) setState(() => _isLoading = false);
     }
   }
-
-  // Same build method, just inserting new section before the info container
+  
+  // ... _sendBroadcast REMAINED SAME ...
   Future<void> _sendBroadcast() async {
     if (_broadcastTitleCtrl.text.isEmpty || _broadcastBodyCtrl.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Title and Message required")));
@@ -174,11 +172,13 @@ class _AdminConfigViewState extends State<AdminConfigView> {
                 decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(20)),
                 child: Column(
                   children: [
-                    _buildTextField("Support Phone / WhatsApp", "+233...", Icons.phone, _adminPhoneCtrl, isDark),
+                    _buildTextField("WhatsApp Support", "050...", Icons.chat, _whatsappCtrl, isDark),
                     const SizedBox(height: 16),
-                    _buildTextField("Student Support Email", "support@stayhub.app", Icons.email, _adminEmailCtrl, isDark),
+                    _buildTextField("Call Hotline", "053...", Icons.phone, _callCtrl, isDark),
                     const SizedBox(height: 16),
-                    _buildTextField("Agent Support Email", "agents@stayhub.app", Icons.support_agent, _agentHelpEmailCtrl, isDark),
+                    _buildTextField("Student Support Email", "support@stayhubgh.com", Icons.email, _adminEmailCtrl, isDark),
+                    const SizedBox(height: 16),
+                    _buildTextField("Agent Support Email", "support@stayhubgh.com", Icons.support_agent, _agentHelpEmailCtrl, isDark),
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
@@ -200,7 +200,7 @@ class _AdminConfigViewState extends State<AdminConfigView> {
               ),
               ),
               
-              const SizedBox(height: 30),
+              // --- FINANCIAL SETTINGS MOVED TO EARNINGS VIEW ---
 
               const SizedBox(height: 30),
 
@@ -218,7 +218,7 @@ class _AdminConfigViewState extends State<AdminConfigView> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: _broadcastTarget,
+                      initialValue: _broadcastTarget,
                       dropdownColor: cardColor,
                       decoration: InputDecoration(
                         labelText: "Target Audience",
@@ -266,6 +266,34 @@ class _AdminConfigViewState extends State<AdminConfigView> {
 
               const SizedBox(height: 30),
               
+              // --- SYSTEM CONTROL ---
+              _buildSectionTitle("System Control", Colors.red),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(color: cardColor, borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.red.withOpacity(0.3))),
+                child: StreamBuilder<DocumentSnapshot>(
+                   stream: FirebaseFirestore.instance.collection('config').doc('app_config').snapshots(),
+                   builder: (context, snapshot) {
+                     final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+                     bool isMaintenance = data['maintenance_mode'] == true;
+                     return SwitchListTile(
+                       title: const Text("Maintenance Mode", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                       subtitle: const Text("Lock the app for all users (except Admins). Use with caution."),
+                       value: isMaintenance,
+                       secondary: const Icon(Icons.warning_amber_rounded, color: Colors.red),
+                       activeThumbColor: Colors.red,
+                       onChanged: (val) async {
+                         await FirebaseFirestore.instance.collection('config').doc('app_config').set({
+                           'maintenance_mode': val
+                         }, SetOptions(merge: true));
+                       },
+                     );
+                   }
+                )
+              ),
+              const SizedBox(height: 30),
+              
                Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
@@ -295,7 +323,7 @@ class _AdminConfigViewState extends State<AdminConfigView> {
     return TextFormField(
       controller: controller,
       style: TextStyle(color: isDark ? Colors.white : Colors.black),
-      keyboardType: label.toLowerCase().contains("phone") ? TextInputType.phone : (label.toLowerCase().contains("email") ? TextInputType.emailAddress : TextInputType.text),
+      keyboardType: label.toLowerCase().contains("phone") || label.toLowerCase().contains("whatsapp") || label.toLowerCase().contains("call") ? TextInputType.phone : (label.toLowerCase().contains("email") ? TextInputType.emailAddress : TextInputType.text),
       decoration: InputDecoration(
         labelText: label,
         hintText: hint,

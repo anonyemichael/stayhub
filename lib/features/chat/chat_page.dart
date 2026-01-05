@@ -1,8 +1,8 @@
-import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -12,12 +12,14 @@ class ChatPage extends StatefulWidget {
   final String chatId;
   final String otherUserName;
   final String otherUserId;
+  final bool isEmbedded;
 
   const ChatPage({
     super.key,
     required this.chatId,
     required this.otherUserName,
     required this.otherUserId,
+    this.isEmbedded = false,
   });
 
   @override
@@ -68,8 +70,8 @@ class _ChatPageState extends State<ChatPage> {
     if (pickedFile != null) {
       setState(() => _isUploading = true);
       
-      File file = File(pickedFile.path);
-      String? uploadedUrl = await CloudinaryService().uploadProfilePicture(file);
+      XFile xFile = pickedFile;
+      String? uploadedUrl = await CloudinaryService().uploadProfilePicture(xFile);
 
       setState(() => _isUploading = false);
 
@@ -99,6 +101,7 @@ class _ChatPageState extends State<ChatPage> {
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: AppBar(
+              automaticallyImplyLeading: !widget.isEmbedded,
               title: Text(widget.otherUserName, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
               backgroundColor: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.7),
               elevation: 0,

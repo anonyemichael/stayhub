@@ -1,4 +1,5 @@
-import 'dart:io';
+// import 'dart:io' show File;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -8,9 +9,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/features/agent/location_picker_page.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:stayhub/services/payment_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class AddHostelPage extends StatefulWidget {
-  const AddHostelPage({super.key});
+  final String? hostelId;
+  final Map<String, dynamic>? initialData;
+
+  const AddHostelPage({super.key, this.hostelId, this.initialData});
 
   @override
   State<AddHostelPage> createState() => _AddHostelPageState();
@@ -31,10 +36,55 @@ class _AddHostelPageState extends State<AddHostelPage> {
   String? _selectedBankCode;
   List<Map<String, dynamic>> _banks = [];
 
+  // School Selection
+  String? _selectedSchool;
+  final List<String> _schools = ['UENR', 'UDS'];
+
+  // Editing State
+  String? _existingCoverUrl;
+  List<String> _existingGalleryUrls = [];
+
   @override
   void initState() {
     super.initState();
     _loadBanks();
+    if (widget.initialData != null) {
+      _loadInitialData();
+    }
+  }
+
+  void _loadInitialData() {
+    final data = widget.initialData!;
+    _nameController.text = data['name'] ?? '';
+    _locationController.text = data['location'] ?? '';
+    _priceController.text = (data['price'] ?? '').toString();
+    _capacityController.text = (data['capacity'] ?? '').toString();
+    _descController.text = data['description'] ?? '';
+    _selectedSchool = data['school'];
+    
+    // Coordinates
+    if (data['latitude'] != null && data['longitude'] != null) {
+      _selectedLatLng = LatLng(data['latitude'], data['longitude']);
+    }
+
+    // Images
+    _existingCoverUrl = data['image'];
+    if (data['gallery'] != null) {
+      _existingGalleryUrls = List<String>.from(data['gallery']);
+    }
+
+    // Amenities
+    if (data['amenities'] != null) {
+      _selectedAmenities.addAll(List<String>.from(data['amenities']));
+    }
+
+    // Bank Details (if present)
+    if (data['bank_details'] != null) {
+      final bank = data['bank_details'];
+      _selectedBankCode = bank['bank_code'];
+      _accountNumberCtrl.text = bank['account_number'] ?? '';
+      _accountNameCtrl.text = bank['account_name'] ?? '';
+    }
   }
 
   Future<void> _loadBanks() async {
@@ -42,8 +92,8 @@ class _AddHostelPageState extends State<AddHostelPage> {
     if (mounted) setState(() => _banks = banks);
   }
 
-  File? _coverImage;
-  List<File> _galleryImages = [];
+  XFile? _coverImage;
+  final List<XFile> _galleryImages = [];
   bool _isLoading = false;
   final List<String> _selectedAmenities = [];
 
@@ -55,7 +105,12 @@ class _AddHostelPageState extends State<AddHostelPage> {
   Future<void> _pickCoverImage() async {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) setState(() => _coverImage = File(pickedFile.path));
+    if (pickedFile != null) {
+      setState(() {
+        _coverImage = pickedFile;
+        _existingCoverUrl = null; // Clear existing if new one picked
+      });
+    }
   }
 
   Future<void> _pickGalleryImages() async {
@@ -63,7 +118,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
     final pickedFiles = await picker.pickMultiImage();
     if (pickedFiles.isNotEmpty) {
       setState(() {
-        _galleryImages.addAll(pickedFiles.map((x) => File(x.path)));
+        _galleryImages.addAll(pickedFiles);
       });
     }
   }
@@ -71,6 +126,12 @@ class _AddHostelPageState extends State<AddHostelPage> {
   void _removeGalleryImage(int index) {
     setState(() {
       _galleryImages.removeAt(index);
+    });
+  }
+
+  void _removeExistingGalleryImage(int index) {
+    setState(() {
+      _existingGalleryUrls.removeAt(index);
     });
   }
 
@@ -103,42 +164,56 @@ class _AddHostelPageState extends State<AddHostelPage> {
     try {
       final cloudinary = CloudinaryService();
 
-      // 1. Upload Cover Image
-      final coverUrl = await cloudinary.uploadProfilePicture(_coverImage!);
-      if (coverUrl == null) throw "Cover image upload failed.";
+      // 1. Upload Cover Image (or use existing)
+      String? coverUrl = _existingCoverUrl;
+      if (_coverImage != null) {
+         coverUrl = await cloudinary.uploadProfilePicture(_coverImage!);
+      }
+      
+      if (coverUrl == null) throw "Cover image is required.";
 
-      // 2. Upload Gallery Images
-      List<String> galleryUrls = [];
+      // 2. Upload New Gallery Images & Merge
+      List<String> galleryUrls = [..._existingGalleryUrls];
       for (var img in _galleryImages) {
         final url = await cloudinary.uploadProfilePicture(img);
         if (url != null) galleryUrls.add(url);
       }
 
       // 3. Parse Numeric Fields
-      final double? agentPrice = double.tryParse(_priceController.text.trim());
+      final double? totalPrice = double.tryParse(_priceController.text.trim());
       final int? capacity = int.tryParse(_capacityController.text.trim());
 
-      if (agentPrice == null || capacity == null) {
+      if (totalPrice == null || capacity == null) {
         throw "Invalid price or capacity format.";
       }
 
-      // Updated: Fetch Real Global Fee (Fixed Amount in GHS)
-      final double platformFee = await FirestoreService().getGlobalCommission();
-      final double finalPrice = agentPrice + platformFee;
+      // Updated: Fetch Global Commission Percentage (e.g. 2.0 for 2%)
+      // This is deducted from the total price, the student pays exactly 'totalPrice'
+      final double commissionPercent = await FirestoreService().getGlobalCommission();
+      final double platformFee = (totalPrice * commissionPercent) / 100; 
+      final double agentEarnings = totalPrice - platformFee;
 
-      // --- PAYOUT SUBACCOUNT CREATION ---
-      String? subAccountCode;
-      Map<String, dynamic>? bankDetails;
+      // --- PAYOUT SUBACCOUNT CREATION (Skip if editing and unchanged, or implement update logic) ---
+      // For now, if editing, we only update if subaccount_code is missing or user explicitly changed bank details
+      // Ideally, updating subaccount is complex. Let's assume for basic edit we might generate a new one if details changed.
+      
+      String? subAccountCode = widget.initialData?['subaccount_code'];
+      Map<String, dynamic>? bankDetails = widget.initialData?['bank_details'];
 
-      if (_selectedBankCode != null && _accountNumberCtrl.text.isNotEmpty) {
+      // Only create new subaccount if it's a new hostel OR bank details changed significantly
+      bool bankDetailsChanged = _selectedBankCode != widget.initialData?['bank_details']?['bank_code'] || 
+                                _accountNumberCtrl.text != widget.initialData?['bank_details']?['account_number'];
+
+      if ((subAccountCode == null || bankDetailsChanged) && _selectedBankCode != null && _accountNumberCtrl.text.isNotEmpty) {
          final businessName = _accountNameCtrl.text.isNotEmpty ? _accountNameCtrl.text : _nameController.text;
          
-         // This throws an exception with the specific error message if it fails
          subAccountCode = await PaymentService().createSubAccount(
             businessName: businessName, 
             bankCode: _selectedBankCode!, 
             accountNumber: _accountNumberCtrl.text.trim(), 
-            percentage: "0"
+            percentage: "0",
+            email: user.email ?? "agent_${user.uid}@stayhub.com", 
+            contactName: businessName
          );
          
          bankDetails = {
@@ -149,32 +224,44 @@ class _AddHostelPageState extends State<AddHostelPage> {
       }
 
       // 4. Save to Firestore
-      await FirestoreService().addHostel({
+      final hostelData = {
         'name': _nameController.text.trim(),
         'location': _locationController.text.trim(),
         'latitude': _selectedLatLng?.latitude, 
         'longitude': _selectedLatLng?.longitude,
-        'price': finalPrice, 
-        'agentPrice': agentPrice, 
+        'price': totalPrice, 
+        'agentPrice': agentEarnings, 
         'platformFee': platformFee,
-        'subaccount_code': subAccountCode, // Saved to Hostel
+        'school': _selectedSchool,
+        'subaccount_code': subAccountCode, 
         'bank_details': bankDetails,
         'capacity': capacity,
         'description': _descController.text.trim(),
-        'contact': user.phoneNumber ?? "", // Auto-fill from Auth or Empty
+        'contact': user.phoneNumber ?? "", 
         'image': coverUrl,
         'gallery': galleryUrls, 
         'amenities': _selectedAmenities,
         'agentId': user.uid,
-        'rating': 'New', 
-        'ratingCount': 0, 
-        'isFeatured': false,
-        'status': 'pending', 
-        'createdAt': FieldValue.serverTimestamp(),
-      });
+        // Status resets to pending on specific edits? Maybe strictly for critical fields. 
+        // For simplicity, let's keep status as is if editing, or 'pending' if new.
+        'status': widget.hostelId != null ? (widget.initialData?['status'] ?? 'pending') : 'pending',
+      };
+      
+      if (widget.hostelId == null) {
+        // New Listing
+        hostelData['rating'] = 'New';
+        hostelData['ratingCount'] = 0;
+        hostelData['isFeatured'] = false;
+        hostelData['createdAt'] = FieldValue.serverTimestamp();
+        await FirestoreService().addHostel(hostelData);
+      } else {
+        // Update Listing
+        hostelData['updatedAt'] = FieldValue.serverTimestamp();
+        await FirestoreService().updateHostel(widget.hostelId!, hostelData);
+      }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel listed successfully!")));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.hostelId != null ? "Property updated!" : "Hostel listed successfully!")));
         Navigator.pop(context);
       }
     } catch (e) {
@@ -228,8 +315,11 @@ class _AddHostelPageState extends State<AddHostelPage> {
         children: [
           GestureDetector(
              onTap: () {
-               if (_currentStep > 0) setState(() => _currentStep--);
-               else Navigator.pop(context);
+               if (_currentStep > 0) {
+                 setState(() => _currentStep--);
+               } else {
+                 Navigator.pop(context);
+               }
              },
              child: Icon(Icons.arrow_back_ios, size: 20, color: isDark ? Colors.white : Colors.black),
           ),
@@ -238,7 +328,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text("List New Property", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : Colors.black)),
+                Text(widget.hostelId != null ? "Edit Property" : "List New Property", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : Colors.black)),
                 const SizedBox(height: 4),
                 Row(
                   children: List.generate(3, (index) {
@@ -280,10 +370,19 @@ class _AddHostelPageState extends State<AddHostelPage> {
             decoration: BoxDecoration(
               color: isDark ? Colors.white10 : Colors.grey[100],
               borderRadius: BorderRadius.circular(24),
-              image: _coverImage != null ? DecorationImage(image: FileImage(_coverImage!), fit: BoxFit.cover) : null,
-              border: Border.all(color: isDark ? Colors.white24 : Colors.grey[300]!, style: _coverImage == null ? BorderStyle.solid : BorderStyle.none),
+              image: _coverImage != null 
+                ? DecorationImage(
+                    image: (kIsWeb 
+                      ? NetworkImage(_coverImage!.path)
+                      : NetworkImage(_coverImage!.path)) as ImageProvider, 
+                    fit: BoxFit.cover
+                  ) 
+                : (_existingCoverUrl != null 
+                   ? DecorationImage(image: CachedNetworkImageProvider(_existingCoverUrl!), fit: BoxFit.cover)
+                   : null),
+              border: Border.all(color: isDark ? Colors.white24 : Colors.grey[300]!, style: (_coverImage == null && _existingCoverUrl == null) ? BorderStyle.solid : BorderStyle.none),
             ),
-            child: _coverImage == null
+            child: (_coverImage == null && _existingCoverUrl == null)
                 ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                     Icon(Icons.add_a_photo_rounded, size: 48, color: Colors.blueAccent.withOpacity(0.5)),
                     const SizedBox(height: 12),
@@ -300,6 +399,15 @@ class _AddHostelPageState extends State<AddHostelPage> {
 
         _buildLabel("Property Name", isDark, required: true),
         TextFormField(controller: _nameController, decoration: _modernInput("e.g. The comfort zone", Icons.apartment, isDark)),
+        const SizedBox(height: 20),
+
+        _buildLabel("University / Campus", isDark, required: true),
+        DropdownButtonFormField<String>(
+          value: _selectedSchool,
+          decoration: _modernInput("Select School", Icons.school, isDark),
+          items: _schools.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+          onChanged: (val) => setState(() => _selectedSchool = val),
+        ),
         const SizedBox(height: 20),
 
         _buildLabel("Location", isDark, required: true),
@@ -353,10 +461,43 @@ class _AddHostelPageState extends State<AddHostelPage> {
                   child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_photo_alternate_rounded, color: Colors.blueAccent), SizedBox(height: 4), Text("Add", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
                 ),
               ),
+
+              // Existing Gallery Images
+              ..._existingGalleryUrls.asMap().entries.map((entry) {
+                return Stack(
+                  children: [
+                     Container(
+                       width: 110, 
+                       margin: const EdgeInsets.only(right: 12), 
+                       decoration: BoxDecoration(
+                         borderRadius: BorderRadius.circular(20), 
+                         image: DecorationImage(
+                           image: CachedNetworkImageProvider(entry.value), 
+                           fit: BoxFit.cover
+                         )
+                        )
+                      ),
+                     Positioned(top: 4, right: 16, child: GestureDetector(onTap: () => _removeExistingGalleryImage(entry.key), child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white))))
+                  ],
+                );
+              }),
+              // New Gallery Images
               ..._galleryImages.asMap().entries.map((entry) {
                 return Stack(
                   children: [
-                     Container(width: 110, margin: const EdgeInsets.only(right: 12), decoration: BoxDecoration(borderRadius: BorderRadius.circular(20), image: DecorationImage(image: FileImage(entry.value), fit: BoxFit.cover))),
+                     Container(
+                       width: 110, 
+                       margin: const EdgeInsets.only(right: 12), 
+                       decoration: BoxDecoration(
+                         borderRadius: BorderRadius.circular(20), 
+                         image: DecorationImage(
+                           image: (kIsWeb 
+                             ? NetworkImage(entry.value.path)
+                             : NetworkImage(entry.value.path)) as ImageProvider, 
+                           fit: BoxFit.cover
+                         )
+                        )
+                      ),
                      Positioned(top: 4, right: 16, child: GestureDetector(onTap: () => _removeGalleryImage(entry.key), child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white))))
                   ],
                 );
@@ -378,7 +519,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
                   DropdownButtonFormField<int>(
                     isExpanded: true,
                     decoration: _modernInput("", Icons.people_outline, isDark),
-                    value: int.tryParse(_capacityController.text),
+                    initialValue: int.tryParse(_capacityController.text),
                     hint: const Text("Room Size", style: TextStyle(fontSize: 12)),
                     items: List.generate(8, (i) => i+1).map((n) => DropdownMenuItem(value: n, child: Text("$n in a room", overflow: TextOverflow.ellipsis))).toList(),
                     onChanged: (v) => setState(() => _capacityController.text = v.toString()),
@@ -459,7 +600,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
               const SizedBox(height: 20),
               
               DropdownButtonFormField<String>(
-                value: _selectedBankCode,
+                initialValue: _selectedBankCode,
                 isExpanded: true, // FIX OVERFLOW
                 dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
                 decoration: _modernInput("Select Bank", Icons.account_balance_wallet_outlined, isDark),
@@ -495,14 +636,18 @@ class _AddHostelPageState extends State<AddHostelPage> {
           onPressed: _isLoading ? null : () {
              // Step 1 Validation
              if (_currentStep == 0) {
-               if (_coverImage == null) {
+               if (_coverImage == null && _existingCoverUrl == null) {
                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add a cover photo *")));
                  return;
                }
-               if (_nameController.text.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter property name *")));
-                 return;
-               }
+                if (_nameController.text.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter property name *")));
+                  return;
+                }
+                if (_selectedSchool == null) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select a school *")));
+                  return;
+                }
                if (_locationController.text.isEmpty) {
                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter city/town name *")));
                  return;
@@ -546,7 +691,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
           ),
           child: _isLoading 
               ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : Text(_currentStep == 2 ? "Publish Listing" : "Continue", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              : Text(_currentStep == 2 ? (widget.hostelId != null ? "Save Changes" : "Publish Listing") : "Continue", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         ),
       ),
     );

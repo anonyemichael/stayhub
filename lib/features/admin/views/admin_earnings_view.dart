@@ -97,7 +97,7 @@ class _SettingsTabState extends State<_SettingsTab> {
         _currentCommission = val;
         _isLoading = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Fixed Commission Updated!")));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Commission Rate Updated!")));
     }
   }
 
@@ -129,29 +129,34 @@ class _SettingsTabState extends State<_SettingsTab> {
               children: [
                  Row(
                    children: [
-                     const Icon(Icons.monetization_on, color: Colors.blue, size: 30),
+                     const Icon(Icons.percent, color: Colors.blue, size: 30),
                      const SizedBox(width: 16),
                      Expanded(
                        child: Column(
                          crossAxisAlignment: CrossAxisAlignment.start,
                          children: [
-                           Text("Fixed Platform Fee", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark?Colors.white:Colors.black)),
-                           Text("Current: ₵${_currentCommission.toStringAsFixed(2)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                           Text("Platform Commission", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: isDark?Colors.white:Colors.black)),
+                           Text("Current: ${_currentCommission.toStringAsFixed(1)}%", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
                          ],
                        ),
                      ),
                    ],
                  ),
                  const SizedBox(height: 20),
+                 Text(
+                   "This percentage is deducted from the Agent's earning. The student sees the original price.",
+                   style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                 ),
+                 const SizedBox(height: 10),
                  TextField(
                    controller: _controller,
                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                    style: TextStyle(color: isDark ? Colors.white : Colors.black),
                    decoration: InputDecoration(
-                     labelText: "New Fee Amount",
-                     hintText: "e.g. 50.00",
+                     labelText: "New Percentage",
+                     hintText: "e.g. 2.0",
                      border: const OutlineInputBorder(),
-                     suffixText: "GHS",
+                     suffixText: "%",
                      filled: true,
                      fillColor: isDark ? Colors.black26 : Colors.white,
                      labelStyle: TextStyle(color: isDark ? Colors.white70 : Colors.grey)
@@ -169,7 +174,7 @@ class _SettingsTabState extends State<_SettingsTab> {
                      ),
                      child: _isLoading 
                         ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                        : const Text("Update Split Rule"),
+                        : const Text("Update Commission Rate"),
                    ),
                  )
               ],
@@ -211,14 +216,16 @@ class _SplitLogTab extends StatelessWidget {
 
                if (dataA != null) {
                   final val = dataA['bookingDate'];
-                  if (val is Timestamp) dateA = val.toDate();
-                  else if (val is String) dateA = DateTime.tryParse(val);
+                  if (val is Timestamp) {
+                    dateA = val.toDate();
+                  } else if (val is String) dateA = DateTime.tryParse(val);
                }
                
                if (dataB != null) {
                   final val = dataB['bookingDate'];
-                  if (val is Timestamp) dateB = val.toDate();
-                  else if (val is String) dateB = DateTime.tryParse(val);
+                  if (val is Timestamp) {
+                    dateB = val.toDate();
+                  } else if (val is String) dateB = DateTime.tryParse(val);
                }
 
                if (dateA == null && dateB == null) return 0;

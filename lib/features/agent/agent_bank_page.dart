@@ -59,41 +59,35 @@ class _AgentBankPageState extends State<AgentBankPage> {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // We use a FIXED FEE model (Global Commission in GHS).
-    // Therefore, the subaccount itself is created with 0% percentage charge.
-    // The actual fee is deducted per-transaction using 'transaction_charge'.
+    // 0. Verify Account Name (Simulation for now - Real verify would call backend)
+    // In a real app, you MUST verify the account name matches the number to avoid errors.
     
     // 1. Create Subaccount on Paystack
     final subAccountCode = await _paymentService.createSubAccount(
       businessName: _businessNameController.text,
       bankCode: _selectedBank!['code'],
       accountNumber: _accountController.text.trim(),
-      percentage: "0.0", // 0% split rule on the account level
+      percentage: "2.0", // Platform takes 2.0% fee, Agent keeps 98%
+      email: user.email ?? "agent@stayhub.app",
+      contactName: _businessNameController.text.trim(),
     );
 
-    if (subAccountCode != null) {
-      // 2. Save to Firestore
-      await _firestoreService.updateAgentProfile(user.uid, {
-        'paystack_subaccount_code': subAccountCode,
-        'bank_name': _selectedBank!['name'],
-        'account_number': _accountController.text.trim(),
-        'is_bank_verified': true,
-      });
+    // 2. Save to Firestore
+    await _firestoreService.updateAgentProfile(user.uid, {
+      'paystack_subaccount_code': subAccountCode,
+      'bank_name': _selectedBank!['name'],
+      'account_number': _accountController.text.trim(),
+      'is_bank_verified': true,
+      'business_name': _businessNameController.text, // Save business name too
+    });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Bank Account Linked Successfully!")),
-        );
-        Navigator.pop(context);
-      }
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Failed to link account. Please check details.")),
-        );
-      }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Bank Account Linked Successfully!"), backgroundColor: Colors.green),
+      );
+      Navigator.pop(context);
     }
-
+  
     if (mounted) setState(() => _isSubmitting = false);
   }
 
@@ -239,7 +233,7 @@ class _AgentBankPageState extends State<AgentBankPage> {
   Widget _buildStyledDropdown(bool isDark) {
     final fillColor = isDark ? Colors.grey[800]!.withOpacity(0.5) : Colors.grey[50]!;
     return DropdownButtonFormField<Map<String, dynamic>>(
-      value: _selectedBank,
+      initialValue: _selectedBank,
       isExpanded: true, // Fix Horizontal Overflow
       dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
       style: TextStyle(color: isDark ? Colors.white : Colors.black87),

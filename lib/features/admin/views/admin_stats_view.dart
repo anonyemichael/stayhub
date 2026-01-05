@@ -5,7 +5,8 @@ import 'package:intl/intl.dart';
 
 class AdminStatsView extends StatefulWidget {
   final Function(int)? onNavigate;
-  const AdminStatsView({super.key, this.onNavigate});
+  final bool isSuper;
+  const AdminStatsView({super.key, this.onNavigate, this.isSuper = false});
 
   @override
   State<AdminStatsView> createState() => _AdminStatsViewState();
@@ -47,33 +48,38 @@ class _AdminStatsViewState extends State<AdminStatsView> {
     double totalRevenue = 0.0;
     Map<int, double> monthlyData = {};
 
-    try {
-      final revenueSnapshot = await firestore.collectionGroup('bookings')
-          .where('status', isEqualTo: 'PAID')
-          .limit(1000) // Safety limit
-          .get();
+    // Only fetch revenue if Super Admin
+    if (widget.isSuper) {
+      try {
+        final revenueSnapshot = await firestore.collectionGroup('bookings')
+            .where('status', isEqualTo: 'PAID')
+            .limit(1000) // Safety limit
+            .get();
 
-      for (var doc in revenueSnapshot.docs) {
-         final data = doc.data();
-         final double fee = (data['platformFee'] as num?)?.toDouble() ?? 50.0; 
-         
-         totalRevenue += fee;
+        for (var doc in revenueSnapshot.docs) {
+           final data = doc.data();
+           final double fee = (data['platformFee'] as num?)?.toDouble() ?? 50.0; 
+           
+           totalRevenue += fee;
 
-         final Timestamp? ts = data['bookingDate']; 
-         if (ts != null) {
-           final date = ts.toDate();
-           if (date.year == DateTime.now().year) {
-               monthlyData.update(date.month - 1, (val) => val + fee, ifAbsent: () => fee);
+           final Timestamp? ts = data['bookingDate']; 
+           if (ts != null) {
+             final date = ts.toDate();
+             if (date.year == DateTime.now().year) {
+                 monthlyData.update(date.month - 1, (val) => val + fee, ifAbsent: () => fee);
+             }
            }
-         }
+        }
+      } catch (e) {
+        debugPrint("Revenue Fetch Error: $e");
       }
-    } catch (e) {
-      debugPrint("Revenue Fetch Error: $e");
     }
 
     List<FlSpot> spots = [];
-    for (int i=0; i<12; i++) {
-       spots.add(FlSpot(i.toDouble(), monthlyData[i] ?? 0.0));
+    if (widget.isSuper) {
+      for (int i=0; i<12; i++) {
+         spots.add(FlSpot(i.toDouble(), monthlyData[i] ?? 0.0));
+      }
     }
 
     return {
@@ -99,7 +105,7 @@ class _AdminStatsViewState extends State<AdminStatsView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text("Dashboard", style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 22)),
-            Text("Platform Overview", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[500], fontSize: 13, fontWeight: FontWeight.w400)),
+            const Text("Platform Overview", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
           ],
         ),
         backgroundColor: bgColor,
@@ -144,10 +150,11 @@ class _AdminStatsViewState extends State<AdminStatsView> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 1. REVENUE CARD (HERO)
-                _buildRevenueChartCard(revenue, spots, isDark, currencyFormat),
-
-                const SizedBox(height: 30),
+                // 1. REVENUE CARD (HERO) - Only for Super Admin
+                if (widget.isSuper)
+                   _buildRevenueChartCard(revenue, spots, isDark, currencyFormat),
+                
+                if (widget.isSuper) const SizedBox(height: 30),
 
                 // 2. METRICS GRID
                 Text("Key Metrics", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor)),
@@ -253,11 +260,11 @@ class _AdminStatsViewState extends State<AdminStatsView> {
           Expanded(
             child: LineChart(
               LineChartData(
-                gridData: FlGridData(show: false), // Clean look
+                gridData: const FlGridData(show: false), // Clean look
                 titlesData: FlTitlesData(
-                  leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   bottomTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -287,7 +294,7 @@ class _AdminStatsViewState extends State<AdminStatsView> {
                     color: Colors.white,
                     barWidth: 3,
                     isStrokeCapRound: true,
-                    dotData: FlDotData(show: false),
+                    dotData: const FlDotData(show: false),
                     belowBarData: BarAreaData(
                       show: true,
                       gradient: LinearGradient(
@@ -304,7 +311,7 @@ class _AdminStatsViewState extends State<AdminStatsView> {
           const SizedBox(height: 10),
           // Mini labels for timeline
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            Text("2024", style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10)),
+            Text("2025", style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10)),
             Text("YTD", style: TextStyle(color: Colors.white.withOpacity(0.4), fontSize: 10)),
           ])
         ],

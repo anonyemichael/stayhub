@@ -1,8 +1,10 @@
 import 'dart:ui'; // Required for BackdropFilter
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart'; // For HapticFeedback
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:stayhub/services/auth_service.dart';
 import 'package:stayhub/features/agent/agent_dashboard.dart';
 
@@ -95,10 +97,13 @@ class _AgentLoginPageState extends State<AgentLoginPage> with TickerProviderStat
     } on FirebaseAuthException catch (e) {
       String msg = e.message ?? "Authentication failed";
       if (e.code == 'user-not-found') msg = "No agent found with this email.";
-      if (e.code == 'wrong-password') msg = "Incorrect password.";
+      if (e.code == 'wrong-password') msg = "Invalid password. Please try again.";
+      if (e.code == 'invalid-email') msg = "The email address is invalid.";
+      if (e.code == 'network-request-failed') msg = "No internet connection.";
+      if (e.code == 'too-many-requests') msg = "Too many attempts. Try again later.";
       _showCustomSnack(msg, isError: true);
     } catch (e) {
-      _showCustomSnack("System Error: ${e.toString()}", isError: true);
+      _showCustomSnack("An unexpected error occurred. Please try again.", isError: true);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -153,8 +158,11 @@ class _AgentLoginPageState extends State<AgentLoginPage> with TickerProviderStat
               child: SingleChildScrollView(
                 physics: const BouncingScrollPhysics(),
                 padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 450),
+                    child: Column(
+                      children: [
                     // Dynamic Greeting
                     Text(
                       _timeGreeting(),
@@ -262,10 +270,43 @@ class _AgentLoginPageState extends State<AgentLoginPage> with TickerProviderStat
                           style: TextStyle(color: Colors.white.withValues(alpha: 0.6))
                       ),
                     ),
+                    const SizedBox(height: 20),
+                    // AGREEMENT TEXT
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Text.rich(
+                        TextSpan(
+                          text: "By continuing, you agree to StayHub's ",
+                          style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 11),
+                          children: [
+                            TextSpan(
+                              text: "Terms",
+                              style: const TextStyle(color: Colors.cyanAccent, fontSize: 11, decoration: TextDecoration.underline),
+                              recognizer: TapGestureRecognizer()..onTap = () => launchUrl(
+                                Uri.parse('https://stayhubgh.com/terms.html'),
+                                mode: LaunchMode.inAppWebView,
+                              ),
+                            ),
+                            const TextSpan(text: " and "),
+                            TextSpan(
+                              text: "Privacy Policy",
+                              style: const TextStyle(color: Colors.cyanAccent, fontSize: 11, decoration: TextDecoration.underline),
+                              recognizer: TapGestureRecognizer()..onTap = () => launchUrl(
+                                Uri.parse('https://stayhubgh.com/privacy.html'),
+                                mode: LaunchMode.inAppWebView,
+                              ),
+                            ),
+                          ],
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
+          ),
+        ),
           ],
         ),
       ),

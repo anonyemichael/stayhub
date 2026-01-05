@@ -1,15 +1,16 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:stayhub/providers/theme_provider.dart';
-import 'package:stayhub/features/profile/privacy_page.dart';
-import 'package:stayhub/features/profile/terms_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stayhub/providers/theme_provider.dart';
+import 'package:stayhub/features/profile/about_page.dart';
 import 'package:stayhub/features/admin/admin_dashboard.dart';
 import 'package:stayhub/auth/auth_page.dart'; // For redirection after delete
+import 'package:stayhub/features/profile/privacy_page.dart';
+import 'package:stayhub/features/profile/terms_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -53,20 +54,102 @@ class _SettingsPageState extends State<SettingsPage> {
 
     if (confirm == true && mounted) {
       try {
-        await FirebaseFirestore.instance.collection('users').doc(user!.uid).delete();
+        // 1. Delete Firestore Data (Check all possible collections)
+        final uid = user!.uid;
+        await FirebaseFirestore.instance.collection('users').doc(uid).delete();
+        await FirebaseFirestore.instance.collection('agents').doc(uid).delete();
+        await FirebaseFirestore.instance.collection('admins').doc(uid).delete();
+
+        // 2. Delete Auth Account
         await user!.delete();
+
         if (mounted) {
           Navigator.of(context).pushAndRemoveUntil(
                MaterialPageRoute(builder: (context) => const AuthPage()),
                (route) => false,
           );
         }
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'requires-recent-login' && mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Security: Please log out and log in again to delete your account.")));
+        } else if (mounted) {
+           ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.message}")));
+        }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e. You may need to re-login.")));
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
         }
       }
     }
+  }
+
+  Future<void> _showChangePasswordDialog(BuildContext context) async {
+    final passwordCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool isLoading = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text("Change Password"),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: passwordCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: "New Password", border: OutlineInputBorder()),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmCtrl,
+                obscureText: true,
+                decoration: const InputDecoration(labelText: "Confirm Password", border: OutlineInputBorder()),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
+            ElevatedButton(
+              onPressed: isLoading ? null : () async {
+                if (passwordCtrl.text != confirmCtrl.text) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Passwords do not match")));
+                  return;
+                }
+                if (passwordCtrl.text.length < 6) {
+                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password must be at least 6 characters")));
+                   return;
+                }
+
+                setDialogState(() => isLoading = true);
+                try {
+                  await FirebaseAuth.instance.currentUser!.updatePassword(passwordCtrl.text);
+                  
+                  // Also update in Firestore if they are an agent and we stored it there (for legacy/admin sync)
+                  final email = FirebaseAuth.instance.currentUser!.email;
+                  if (email != null) {
+                    await FirebaseFirestore.instance.collection('agents').doc(email).update({
+                      'password': passwordCtrl.text,
+                    }).catchError((_) {}); // Ignore if not an agent doc
+                  }
+
+                  if (mounted) Navigator.pop(context);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password updated successfully!")));
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}\n(You may need to logout and login again for security)")));
+                  }
+                } finally {
+                  if (mounted) setDialogState(() => isLoading = false);
+                }
+              },
+              child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("Update"),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -163,9 +246,26 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+            // 3. Security Section
+            _buildSectionHeader("SECURITY & ACCOUNT", secondaryTextColor),
+            Container(
+              decoration: BoxDecoration(color: boxColor, borderRadius: BorderRadius.circular(16)),
+              child: Column(
+                children: [
+                  _buildNavTile(
+                    title: "Change Password",
+                    icon: Icons.lock_reset,
+                    iconColor: Colors.blueAccent,
+                    boxColor: boxColor,
+                    textColor: textColor,
+                    onTap: () => _showChangePasswordDialog(context),
+                  ),
+                ],
+              ),
+            ),
             const SizedBox(height: 24),
 
-            // 3. Info & Support Section
+            // 4. Info & Support Section
             _buildSectionHeader("SUPPORT & ABOUT", secondaryTextColor),
             Container(
               decoration: BoxDecoration(color: boxColor, borderRadius: BorderRadius.circular(16)),
@@ -177,7 +277,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     iconColor: Colors.teal,
                     boxColor: boxColor,
                     textColor: textColor,
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PrivacyPage())),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const PrivacyPage()),
+                    ),
                   ),
                   _buildDivider(isDark),
                   _buildNavTile(
@@ -186,7 +289,10 @@ class _SettingsPageState extends State<SettingsPage> {
                     iconColor: Colors.orange,
                     boxColor: boxColor,
                     textColor: textColor,
-                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TermsPage())),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const TermsPage()),
+                    ),
                   ),
                   _buildDivider(isDark),
                   _buildNavTile(
@@ -196,26 +302,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     boxColor: boxColor,
                     textColor: textColor,
                     trailing: Text(_appVersion, style: TextStyle(color: secondaryTextColor, fontSize: 14)),
-                    onTap: () {
-                      showAboutDialog(
-                        context: context,
-                        applicationName: "StayHub",
-                        applicationVersion: _appVersion,
-                        applicationIcon: const Icon(Icons.hub, size: 50, color: Colors.blue),
-                        applicationLegalese: "© 2025 StayHub Inc.\nAll rights reserved.",
-                        children: [
-                          const SizedBox(height: 24),
-                          const Text(
-                              "StayHub is the leading student housing platform in Ghana. We enable students to discover, book, and pay for verified hostels near their campus seamlessly and securely.\n\n"
-                              "We are dedicated to providing a safe and reliable service for the student community.",
-                              style: TextStyle(fontSize: 14, height: 1.5),
-                              textAlign: TextAlign.justify,
-                          ),
-                          const SizedBox(height: 24),
-                          const Text("Contact: support@stayhub.app", style: TextStyle(fontWeight: FontWeight.bold)),
-                        ],
-                      );
-                    },
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutPage())),
                   ),
                 ],
               ),
@@ -237,14 +324,15 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
-            // 5. Admin Secret (Kept from before)
-            if (user?.email == "anonyemichael6@gmail.com") 
-              Padding(
-                padding: const EdgeInsets.only(top: 40),
-                child: GestureDetector(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboard())),
-                  child: const Text("Admin Panel", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                ),
+            // 5. DEBUG MODE: OPEN ACCESS
+            if (user != null)
+              Column(
+                children: [
+                   _buildAdminButton(context),
+                   const SizedBox(height: 10),
+                   const Text("DEBUG: ADMIN OPEN TO ALL", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+                   Text("Your email: ${user!.email}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
+                ],
               ),
 
              const SizedBox(height: 50),
@@ -319,4 +407,25 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildDivider(bool isDark) {
     return Divider(height: 1, thickness: 0.5, indent: 56, color: isDark ? Colors.grey[800] : Colors.grey[300]);
   }
+
+  Widget _buildAdminButton(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 40),
+      child: GestureDetector(
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminDashboard())),
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.blue.withOpacity(0.1), 
+            borderRadius: BorderRadius.circular(16), 
+            border: Border.all(color: Colors.blue.withOpacity(0.3))
+          ),
+          child: const Center(
+            child: Text("Access Admin Panel", style: TextStyle(color: Colors.blue, fontWeight: FontWeight.bold))
+          ),
+        ),
+      ),
+    );
+  }
 }
+

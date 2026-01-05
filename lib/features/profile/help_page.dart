@@ -1,7 +1,6 @@
-import 'dart:ui'; // For ImageFilter
-import 'dart:math'; // For background animations
+import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // For HapticFeedback
+import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/services/firestore_service.dart';
@@ -16,27 +15,31 @@ class HelpPage extends StatefulWidget {
 class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
   final FirestoreService _firestoreService = FirestoreService();
+  String _searchQuery = "";
 
-  // WhatsApp Configuration
-  // final String _whatsappNumber = "233509483401"; // Deprecated, fetched from DB now.
-
-  // Animations
   late AnimationController _bgController;
   late AnimationController _entranceController;
+
+  final List<Map<String, dynamic>> _categories = [
+    {'icon': Icons.payment_rounded, 'label': 'Payments', 'color': Colors.orangeAccent},
+    {'icon': Icons.hotel_rounded, 'label': 'Booking', 'color': Colors.blueAccent},
+    {'icon': Icons.person_rounded, 'label': 'Account', 'color': Colors.purpleAccent},
+    {'icon': Icons.security_rounded, 'label': 'Safety', 'color': Colors.greenAccent},
+  ];
+
+  String _selectedCategory = "Payments";
 
   @override
   void initState() {
     super.initState();
-    // 1. Background Breathing Animation
     _bgController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 10),
+      duration: const Duration(seconds: 15),
     )..repeat(reverse: true);
 
-    // 2. Staggered Entrance Animation
     _entranceController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 1200),
+      duration: const Duration(milliseconds: 1000),
     )..forward();
   }
 
@@ -50,98 +53,48 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
 
   // --- ACTIONS ---
 
-  // --- ACTIONS ---
-
-  // --- ACTIONS ---
-
   Future<void> _launchWhatsApp() async {
-    HapticFeedback.heavyImpact(); 
-    
-    String number = ""; 
-
-    try {
-      _showSnack("Fetching contact info..."); // DEBUG: Let user know we are trying
-      
-      // Force fetch from server to avoid stale cache
-      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get(const GetOptions(source: Source.server));
-      
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        final studentSupport = data['student_support'] as Map<String, dynamic>?;
-        
-        if (studentSupport != null && studentSupport['whatsapp'] != null && studentSupport['whatsapp'].toString().isNotEmpty) {
-           number = studentSupport['whatsapp'];
-           _showSnack("Found contact: $number"); // DEBUG: Show user what we found
-        }
-      } else {
-        _showSnack("Config not found on server", isError: true);
-      }
-    } catch (e) {
-      _showSnack("Fetch Error: $e", isError: true); 
-    }
-
-    if (number.isEmpty) {
-       _showSnack("No WhatsApp number configured", isError: true);
-       return;
-    }
-
-    final Uri url = Uri.parse("https://wa.me/$number?text=${Uri.encodeComponent('Hello StayHub, I need help with...')}");
-    try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-      } else {
-        _showSnack("Could not launch WhatsApp", isError: true);
-      }
-    } catch (e) {
-      _showSnack("Error: $e", isError: true);
-    }
-  }
-
-  Future<void> _launchEmail() async {
-    HapticFeedback.lightImpact();
-    
-    String email = 'support@stayhub.app';
-     try {
-      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        final studentSupport = data['student_support'] as Map<String, dynamic>?;
-        
-        if (studentSupport != null && studentSupport['email'] != null && studentSupport['email'].toString().isNotEmpty) {
-           email = studentSupport['email'];
-        }
-      }
-    } catch (e) {
-      // Fallback
-    }
-
-    final Uri url = Uri(scheme: 'mailto', path: email);
-    if (await canLaunchUrl(url)) await launchUrl(url);
-  }
-
-  Future<void> _launchCall() async {
     HapticFeedback.heavyImpact();
-    
     String number = "";
     try {
       final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
       if (doc.exists) {
         final data = doc.data() as Map<String, dynamic>;
-        // Use 'admin_contact' phone or 'student_support' whatsapp as fallback
-        final admin = data['admin_contact'] as Map<String, dynamic>?;
-        final student = data['student_support'] as Map<String, dynamic>?;
-        
-        number = admin?['phone'] ?? student?['whatsapp'] ?? "";
+        number = data['student_support']?['whatsapp'] ?? "";
       }
-    } catch (e) {
-      // Ignore
+    } catch (_) {}
+
+    if (number.isEmpty) {
+      _showSnack("WhatsApp support is currently unavailable.", isError: true);
+      return;
     }
+
+    final Uri url = Uri.parse("https://wa.me/$number?text=${Uri.encodeComponent('Hello StayHub Support, I need help with... ')}");
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _launchEmail() async {
+    HapticFeedback.lightImpact();
+    final Uri url = Uri(scheme: 'mailto', path: 'support@stayhubgh.com');
+    if (await canLaunchUrl(url)) await launchUrl(url);
+  }
+
+  Future<void> _launchCall() async {
+    HapticFeedback.heavyImpact();
+    String number = "";
+    try {
+      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
+      if (doc.exists) {
+        final data = doc.data() as Map<String, dynamic>;
+        number = data['admin_contact']?['phone'] ?? data['student_support']?['whatsapp'] ?? "";
+      }
+    } catch (_) {}
 
     if (number.isNotEmpty) {
       final Uri url = Uri.parse("tel:$number");
       if (await canLaunchUrl(url)) await launchUrl(url);
-    } else {
-      _showSnack("No hotline available", isError: true);
     }
   }
 
@@ -151,174 +104,39 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
         content: Text(msg),
         backgroundColor: isError ? Colors.redAccent : Colors.black,
         behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
-  // --- UI BUILDER ---
-
   @override
   Widget build(BuildContext context) {
-    // We force a dark/rich theme for this specific page to make it look premium
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       body: Stack(
         children: [
-          // 1. ANIMATED BACKGROUND (The "Breathing" Effect)
-          AnimatedBuilder(
-            animation: _bgController,
-            builder: (context, child) {
-              return Stack(
-                children: [
-                  // Deep Base
-                  Container(color: const Color(0xFF0F172A)),
-
-                  // Moving Blob 1 (Purple)
-                  Positioned(
-                    top: -100 + (_bgController.value * 50),
-                    left: -50,
-                    child: _buildBlurCircle(300, Colors.purpleAccent.withOpacity(0.3)),
-                  ),
-
-                  // Moving Blob 2 (Blue)
-                  Positioned(
-                    bottom: -50 - (_bgController.value * 50),
-                    right: -50,
-                    child: _buildBlurCircle(350, Colors.blueAccent.withOpacity(0.2)),
-                  ),
-
-                  // Moving Blob 3 (Cyan/Green for Ghana vibe)
-                  Positioned(
-                    top: 200,
-                    right: -100 + (_bgController.value * 30),
-                    child: _buildBlurCircle(200, Colors.tealAccent.withOpacity(0.15)),
-                  ),
-                ],
-              );
-            },
-          ),
-
-          // 2. GLASS CONTENT
+          _buildAnimatedBackground(),
           SafeArea(
             child: Column(
               children: [
-                // Header
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      _buildGlassButton(Icons.arrow_back_ios_new, () => Navigator.pop(context)),
-                      const Text(
-                        "CONCIERGE",
-                        style: TextStyle(color: Colors.white, letterSpacing: 3, fontWeight: FontWeight.bold, fontSize: 14),
-                      ),
-                      _buildGlassButton(Icons.more_horiz, () {}),
-                    ],
-                  ),
-                ),
-
+                _buildAppBar(),
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const SizedBox(height: 10),
-
-                        // Hero Text
-                        _buildAnimatedItem(0, const Text(
-                          "We are here\nto help.",
-                          style: TextStyle(color: Colors.white, fontSize: 42, fontWeight: FontWeight.w900, height: 1.1),
-                        )),
-
+                        const SizedBox(height: 20),
+                        _buildHeroSection(),
                         const SizedBox(height: 30),
-
-                        // Search Field (Floating)
-                        _buildAnimatedItem(1, ClipRRect(
-                          borderRadius: BorderRadius.circular(20),
-                          child: BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                            child: TextField(
-                              controller: _searchController,
-                              style: const TextStyle(color: Colors.white),
-                              decoration: InputDecoration(
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.1),
-                                hintText: "Search knowledge base...",
-                                hintStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                                prefixIcon: const Icon(Icons.search, color: Colors.white70),
-                                border: InputBorder.none,
-                                contentPadding: const EdgeInsets.all(20),
-                              ),
-                            ),
-                          ),
-                        )),
-
+                        _buildSearchBar(),
                         const SizedBox(height: 40),
-
-                        // --- THE MAIN ACTIONS ---
-
-                        // 1. WHATSAPP (Hero Button)
-                        _buildAnimatedItem(2, GestureDetector(
-                          onTap: _launchWhatsApp,
-                          child: Container(
-                            height: 100,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [Color(0xFF25D366), Color(0xFF128C7E)], // Official WhatsApp Colors
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                              ),
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(color: const Color(0xFF25D366).withOpacity(0.4), blurRadius: 20, offset: const Offset(0, 8)),
-                              ],
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.message_rounded, color: Colors.white, size: 36),
-                                const SizedBox(width: 16),
-                                Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text("Chat on WhatsApp", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                                    Text("Instant reply • Online", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
-                                  ],
-                                )
-                              ],
-                            ),
-                          ),
-                        )),
-
-                        const SizedBox(height: 16),
-
-                        // 2. Secondary Actions Row
-                        _buildAnimatedItem(3, Row(
-                          children: [
-                            Expanded(child: _buildSecondaryAction("Email Support", Icons.mail_outline, Colors.purpleAccent, _launchEmail)),
-                            const SizedBox(width: 16),
-                            Expanded(child: _buildSecondaryAction("Live Agent", Icons.headset_mic_outlined, Colors.blueAccent, _launchCall)),
-                          ],
-                        )),
-
+                        _buildContactCards(),
                         const SizedBox(height: 40),
-
-                        // FAQ Section
-                        _buildAnimatedItem(4, Row(
-                          children: [
-                            Text("Quick Answers", style: TextStyle(color: Colors.white.withOpacity(0.7), fontWeight: FontWeight.bold)),
-                            const Spacer(),
-                            const Icon(Icons.arrow_downward, color: Colors.white30, size: 16),
-                          ],
-                        )),
-                        const SizedBox(height: 16),
-
-                        _buildAnimatedItem(5, _buildGlassFAQList()),
-
+                        _buildCategoryTabs(),
+                        const SizedBox(height: 24),
+                        _buildFaqList(),
                         const SizedBox(height: 40),
                       ],
                     ),
@@ -332,118 +150,296 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
     );
   }
 
-  // --- HELPER WIDGETS ---
-
-  Widget _buildBlurCircle(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        boxShadow: [BoxShadow(color: color, blurRadius: 60, spreadRadius: 20)],
+  Widget _buildAppBar() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          _buildGlassIconButton(Icons.arrow_back_ios_new, () => Navigator.pop(context)),
+          const Text(
+            "SUPPORT HUB",
+            style: TextStyle(
+              color: Colors.white,
+              letterSpacing: 2,
+              fontWeight: FontWeight.w800,
+              fontSize: 12,
+            ),
+          ),
+          const SizedBox(width: 45), // Placeholder for balance
+        ],
       ),
+    );
+  }
+
+  Widget _buildHeroSection() {
+    return _buildAnimatedItem(0, Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "How can we\nhelp you today?",
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: 38,
+            fontWeight: FontWeight.w900,
+            height: 1.1,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          "Find answers instantly or talk to a concierge.",
+          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16),
+        ),
+      ],
+    ));
+  }
+
+  Widget _buildSearchBar() {
+    return _buildAnimatedItem(1, ClipRRect(
+      borderRadius: BorderRadius.circular(20),
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
-        child: Container(color: Colors.transparent),
+        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+        child: Container(
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.1)),
+          ),
+          child: TextField(
+            controller: _searchController,
+            onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+            style: const TextStyle(color: Colors.white),
+            decoration: InputDecoration(
+              hintText: "Search for topics or keywords...",
+              hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
+              prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
+              border: InputBorder.none,
+              contentPadding: const EdgeInsets.symmetric(vertical: 20),
+            ),
+          ),
+        ),
+      ),
+    ));
+  }
+
+  Widget _buildContactCards() {
+    return _buildAnimatedItem(2, Row(
+      children: [
+        _buildContactCard(
+          icon: Icons.message_rounded,
+          title: "WhatsApp",
+          subtitle: "Instant Help",
+          color: const Color(0xFF25D366),
+          onTap: _launchWhatsApp,
+        ),
+        const SizedBox(width: 16),
+        _buildContactCard(
+          icon: Icons.headset_mic_rounded,
+          title: "Hotline",
+          subtitle: "Call Agent",
+          color: Colors.blueAccent,
+          onTap: _launchCall,
+        ),
+      ],
+    ));
+  }
+
+  Widget _buildContactCard({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: color.withOpacity(0.2)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+                child: Icon(icon, color: Colors.white, size: 20),
+              ),
+              const SizedBox(height: 16),
+              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildGlassButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: () {
-        HapticFeedback.lightImpact();
-        onTap();
-      },
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.1),
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withOpacity(0.2)),
-        ),
-        child: Icon(icon, color: Colors.white, size: 20),
+  Widget _buildCategoryTabs() {
+    return _buildAnimatedItem(3, SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: _categories.map((cat) {
+          final isSelected = _selectedCategory == cat['label'];
+          return GestureDetector(
+            onTap: () => setState(() => _selectedCategory = cat['label']!),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected ? cat['color'] : Colors.white.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: isSelected ? Colors.transparent : Colors.white.withOpacity(0.1)),
+              ),
+              child: Row(
+                children: [
+                  Icon(cat['icon'] as IconData, size: 18, color: isSelected ? Colors.black : cat['color'] as Color),
+                  const SizedBox(width: 8),
+                  Text(
+                    cat['label'] as String,
+                    style: TextStyle(
+                      color: isSelected ? Colors.black : Colors.white,
+                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.normal,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }).toList(),
       ),
-    );
+    ));
   }
 
-  Widget _buildSecondaryAction(String label, IconData icon, Color color, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 80,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.05),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Colors.white.withOpacity(0.1)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildGlassFAQList() {
+  Widget _buildFaqList() {
     return StreamBuilder<QuerySnapshot>(
       stream: _firestoreService.getFaqs(),
       builder: (context, snapshot) {
-        // Mock Data if empty
-        var docs = snapshot.data?.docs ?? [];
-        final mockData = [
-          {'q': "How do I make payment?", 'a': "We accept MTN Mobile Money and Vodafone Cash directly in the app."},
-          {'q': "Is my booking secure?", 'a': "Yes, all bookings are verified by the university housing committee."},
+        var faqs = [
+          // Fallback Local FAQs categorized
+          {'q': "How do I make payment?", 'a': "Go to your booking details and tap 'Pay Now'. We support Mobile Money and Cards.", 'cat': 'Payments'},
+          {'q': "When will my booking be confirmed?", 'a': "Agents usually confirm within 2-4 hours. You'll get a notification instantly.", 'cat': 'Booking'},
+          {'q': "Can I get a refund?", 'a': "Full automated refunds are available for 24 hours after payment. After that, contact the agent.", 'cat': 'Payments'},
+          {'q': "How to update my profile?", 'a': "Go to Profile > Edit Profile to update your name, phone, or avatar.", 'cat': 'Account'},
+          {'q': "How do I know a hostel is safe?", 'a': "Every hostel on StayHub is physically verified by our team. Check for the 'Verified' badge.", 'cat': 'Safety'},
         ];
 
-        final count = docs.isEmpty ? mockData.length : docs.length;
+        // Filter by category and search query
+        var filteredFaqs = faqs.where((f) {
+           final matchesCat = f['cat'] == _selectedCategory;
+           final matchesSearch = _searchQuery.isEmpty || f['q']!.toLowerCase().contains(_searchQuery) || f['a']!.toLowerCase().contains(_searchQuery);
+           return matchesCat && matchesSearch;
+        }).toList();
 
-        return Column(
-          children: List.generate(count, (index) {
-            final q = docs.isEmpty ? mockData[index]['q'] : (docs[index].data() as Map)['question'];
-            final a = docs.isEmpty ? mockData[index]['a'] : (docs[index].data() as Map)['answer'];
+        if (filteredFaqs.isEmpty) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: Column(
+                children: [
+                  Icon(Icons.search_off_rounded, size: 60, color: Colors.white.withOpacity(0.1)),
+                  const SizedBox(height: 16),
+                  Text("No answers found for this search.", style: TextStyle(color: Colors.white.withOpacity(0.3))),
+                ],
+              ),
+            ),
+          );
+        }
 
+        return _buildAnimatedItem(4, Column(
+          children: filteredFaqs.map((faq) {
             return Container(
               margin: const EdgeInsets.only(bottom: 12),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(16),
+                color: Colors.white.withOpacity(0.03),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withOpacity(0.05)),
               ),
               child: Theme(
                 data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
                 child: ExpansionTile(
-                  iconColor: Colors.white70,
-                  collapsedIconColor: Colors.white30,
-                  title: Text(q, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
+                  tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                  iconColor: Colors.blueAccent,
+                  collapsedIconColor: Colors.white24,
+                  title: Text(
+                    faq['q'] as String,
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
+                  ),
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Text(a, style: TextStyle(color: Colors.white.withOpacity(0.6))),
-                    )
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+                      child: Text(
+                        faq['a'] as String,
+                        style: TextStyle(color: Colors.white.withOpacity(0.6), height: 1.5),
+                      ),
+                    ),
                   ],
                 ),
               ),
             );
-          }),
+          }).toList(),
+        ));
+      },
+    );
+  }
+
+  Widget _buildAnimatedBackground() {
+    return AnimatedBuilder(
+      animation: _bgController,
+      builder: (context, child) {
+        return Stack(
+          children: [
+            Container(color: const Color(0xFF0F172A)),
+            Positioned(
+              top: -100 + (_bgController.value * 80),
+              left: -50,
+              child: _buildBlurBlob(350, Colors.blueAccent.withOpacity(0.2)),
+            ),
+            Positioned(
+              bottom: 100 - (_bgController.value * 60),
+              right: -100,
+              child: _buildBlurBlob(400, Colors.purpleAccent.withOpacity(0.15)),
+            ),
+          ],
         );
       },
     );
   }
 
-  // Animation Helper
+  Widget _buildBlurBlob(double size, Color color) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color, boxShadow: [BoxShadow(color: color, blurRadius: 100, spreadRadius: 40)]),
+      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50), child: Container(color: Colors.transparent)),
+    );
+  }
+
+  Widget _buildGlassIconButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
+        child: Icon(icon, color: Colors.white, size: 20),
+      ),
+    );
+  }
+
   Widget _buildAnimatedItem(int index, Widget child) {
     return FadeTransition(
       opacity: Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: _entranceController, curve: Interval(index * 0.15, 1.0, curve: Curves.easeOut)),
+        CurvedAnimation(parent: _entranceController, curve: Interval(index * 0.15, 1.0, curve: Curves.easeOutCubic)),
       ),
       child: SlideTransition(
-        position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(
-          CurvedAnimation(parent: _entranceController, curve: Interval(index * 0.15, 1.0, curve: Curves.easeOut)),
+        position: Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero).animate(
+          CurvedAnimation(parent: _entranceController, curve: Interval(index * 0.15, 1.0, curve: Curves.easeOutCubic)),
         ),
         child: child,
       ),

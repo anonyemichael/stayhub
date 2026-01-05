@@ -16,6 +16,7 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
   final _passCtrl = TextEditingController();
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
+  final _hostelCtrl = TextEditingController();
   bool _isLoading = false;
 
   // A unique name for the temporary Firebase app instance to avoid conflicts.
@@ -27,6 +28,7 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
     _passCtrl.dispose();
     _nameCtrl.dispose();
     _phoneCtrl.dispose();
+    _hostelCtrl.dispose();
     super.dispose();
   }
 
@@ -38,15 +40,11 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
 
     FirebaseApp? tempApp;
     try {
-      // THE MAGIC TRICK: Initialize a secondary Firebase App instance.
-      // This allows us to use a separate authentication client to create a new user
-      // without logging the current admin user out.
       tempApp = await Firebase.initializeApp(
         name: _tempAppName,
         options: Firebase.app().options,
       );
 
-      // 1. Create the new agent user in Firebase Authentication via the temporary app.
       UserCredential userCredential = await FirebaseAuth.instanceFor(app: tempApp)
           .createUserWithEmailAndPassword(
         email: _emailCtrl.text.trim(),
@@ -58,17 +56,19 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
         throw Exception("Failed to get new agent UID.");
       }
 
-      // 2. Save the agent's profile to the 'agents' collection in your main Firestore database.
       await FirebaseFirestore.instance.collection('agents').doc(newAgentUid).set({
         'uid': newAgentUid,
         'email': _emailCtrl.text.trim(),
         'name': _nameCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
+        'hostelName': _hostelCtrl.text.trim().isEmpty ? 'Not Assigned' : _hostelCtrl.text.trim(),
         'role': 'agent',
-        'status': 'active', // Agents are active immediately since an admin is creating them.
+        'isVerified': true, 
+        'balance': 0.0,
+        'hostels': [],
         'createdAt': FieldValue.serverTimestamp(),
-        'hostelName': 'Not Assigned',
         'rating': 5.0,
+        'password': _passCtrl.text.trim(), // Storing for admin reference
       });
       
       if (mounted) {
@@ -79,9 +79,8 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
     } on FirebaseAuthException catch (e) {
       _showError(_getFriendlyAuthError(e.code));
     } catch (e) {
-      _showError("An unexpected error occurred. Please try again.");
+      _showError("An unexpected error occurred: $e");
     } finally {
-      // 3. IMPORTANT: Always delete the temporary app instance to free up resources.
       if (tempApp != null) {
         await tempApp.delete();
       }
@@ -97,27 +96,31 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
     _passCtrl.clear();
     _nameCtrl.clear();
     _phoneCtrl.clear();
+    _hostelCtrl.clear();
   }
 
   void _showSuccess() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-        title: const Row(children: [
-          Icon(Icons.check_circle, color: Colors.greenAccent), 
-          SizedBox(width: 10), 
-          Text("Agent Spawned", style: TextStyle(color: Colors.white))
-        ]),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        title: const Column(
+          children: [
+            Icon(Icons.check_circle, color: Colors.green, size: 64),
+            SizedBox(height: 16),
+            Text("Agent Created", style: TextStyle(fontWeight: FontWeight.bold)),
+          ],
+        ),
         content: const Text(
-          "This agent can now log in immediately using the Agent Portal.",
-          style: TextStyle(color: Colors.white70)
+          "The agent account is active. They can now log into their portal immediately.",
+          textAlign: TextAlign.center,
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx), 
-            child: const Text("Done", style: TextStyle(color: Colors.blueAccent))
+          Center(
+            child: TextButton(
+              onPressed: () => Navigator.pop(ctx), 
+              child: const Text("Awesome", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))
+            ),
           )
         ],
       ),
@@ -126,80 +129,117 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
 
   void _showError(String error) {
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(error), backgroundColor: Colors.red.shade700),
+      SnackBar(
+        content: Text(error), 
+        backgroundColor: Colors.redAccent,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
     );
   }
 
   String _getFriendlyAuthError(String code) {
     switch (code) {
-      case 'weak-password':
-        return 'The password provided is too weak (must be at least 6 characters).';
-      case 'email-already-in-use':
-        return 'An account already exists for that email address.';
-      case 'invalid-email':
-        return 'The email address is not valid.';
-      default:
-        return 'An unknown authentication error occurred. Code: $code';
+      case 'weak-password': return 'Password is too weak.';
+      case 'email-already-in-use': return 'Email already registered.';
+      case 'invalid-email': return 'Email is invalid.';
+      default: return 'Auth Error: $code';
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    // A custom theme is used to give this admin page a unique "hacker mode" look and feel.
-    return Theme(
-      data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF101010),
-        primaryColor: Colors.greenAccent,
-        inputDecorationTheme: InputDecorationTheme(
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: Colors.white.withOpacity(0.1))),
-            filled: true,
-            fillColor: Colors.white.withOpacity(0.05),
-            labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-            prefixIconColor: Colors.greenAccent
-        )
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("Create Agent Profile", style: TextStyle(fontWeight: FontWeight.bold)),
+        centerTitle: true,
+        elevation: 0,
       ),
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text("GOD MODE: Create Agent"),
-          backgroundColor: Colors.black,
-          elevation: 0,
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: isDark 
+              ? [Theme.of(context).scaffoldBackgroundColor, const Color(0xFF121212)]
+              : [Colors.white, const Color(0xFFF5F5F5)],
+          ),
         ),
-        body: SingleChildScrollView(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Form(
             key: _formKey,
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  "NEW OPERATIVE",
-                  style: TextStyle(color: Colors.greenAccent, letterSpacing: 2, fontWeight: FontWeight.bold),
+                // Header Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.blueAccent.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: Colors.blueAccent.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.blueAccent),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          "This will create a new login account. The agent will be verified automatically.",
+                          style: TextStyle(fontSize: 13, color: Colors.blueAccent, fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
+                const SizedBox(height: 30),
+
+                _buildInputField(_nameCtrl, "Agent Full Name", Icons.person_outline),
                 const SizedBox(height: 20),
-                _buildField(_nameCtrl, "Full Name", Icons.person_outline),
-                const SizedBox(height: 15),
-                _buildField(_phoneCtrl, "Phone Number", Icons.phone, type: TextInputType.phone),
-                const SizedBox(height: 15),
-                _buildField(_emailCtrl, "Email Address", Icons.alternate_email, type: TextInputType.emailAddress),
-                const SizedBox(height: 15),
-                _buildField(_passCtrl, "Initial Password", Icons.lock_outline, isPassword: true),
+                _buildInputField(_emailCtrl, "Email Address", Icons.email_outlined, type: TextInputType.emailAddress),
+                const SizedBox(height: 20),
+                _buildInputField(_passCtrl, "Initial Password", Icons.lock_outline, isPassword: true),
+                const SizedBox(height: 20),
+                _buildInputField(_phoneCtrl, "Phone Number", Icons.phone_outlined, type: TextInputType.phone),
+                const SizedBox(height: 20),
+                _buildInputField(_hostelCtrl, "Assigned Hostel (Optional)", Icons.domain_outlined),
+                
                 const SizedBox(height: 40),
-                SizedBox(
+
+                // Premium Button
+                Container(
                   width: double.infinity,
-                  height: 55,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    gradient: const LinearGradient(colors: [Color(0xFF2196F3), Color(0xFF00BCD4)]),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blueAccent.withOpacity(0.3),
+                        blurRadius: 12,
+                        offset: const Offset(0, 6)
+                      )
+                    ],
+                  ),
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _spawnAgent,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.greenAccent.withOpacity(0.2),
-                      foregroundColor: Colors.greenAccent,
-                      side: const BorderSide(color: Colors.greenAccent),
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                     ),
                     child: _isLoading 
-                      ? const CircularProgressIndicator(color: Colors.greenAccent) 
-                      : const Text("SPAWN AGENT", style: TextStyle(fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+                      ? const CircularProgressIndicator(color: Colors.white) 
+                      : const Text(
+                          "CREATE AGENT ACCOUNT", 
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16, letterSpacing: 1.1)
+                        ),
                   ),
                 ),
+                const SizedBox(height: 40),
               ],
             ),
           ),
@@ -208,29 +248,36 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
     );
   }
 
-  // Helper widget to build a consistently styled text field for this form.
-  Widget _buildField(TextEditingController ctrl, String label, IconData icon, {TextInputType type = TextInputType.text, bool isPassword = false}) {
-    return TextFormField(
-      controller: ctrl,
-      keyboardType: type,
-      obscureText: isPassword,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        labelText: label,
-        prefixIcon: Icon(icon),
-      ),
-      validator: (v) {
-        if (v == null || v.trim().isEmpty) {
-          return "This field is required";
-        }
-        if (isPassword && v.length < 6) {
-          return "Password must be at least 6 characters";
-        }
-        if (type == TextInputType.emailAddress && !v.contains('@')) {
-          return "Please enter a valid email";
-        }
-        return null;
-      },
+  Widget _buildInputField(TextEditingController ctrl, String label, IconData icon, {TextInputType type = TextInputType.text, bool isPassword = false}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: ctrl,
+          keyboardType: type,
+          obscureText: isPassword,
+          style: const TextStyle(fontWeight: FontWeight.w500),
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, size: 22),
+            filled: true,
+            fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14), 
+              borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5)
+            ),
+            contentPadding: const EdgeInsets.symmetric(vertical: 18),
+          ),
+          validator: (v) {
+             if (ctrl != _hostelCtrl && (v == null || v.trim().isEmpty)) return "Required";
+             return null;
+          },
+        ),
+      ],
     );
   }
 }

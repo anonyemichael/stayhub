@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stayhub/auth/verify_email_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stayhub/core/main_page.dart';
 import 'package:stayhub/auth/auth_page.dart';
@@ -34,9 +35,13 @@ class AuthGate extends StatelessWidget {
       // 3. Check Student (Users)
       final userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
       if (userDoc.exists) {
-        final userData = userDoc.data() as Map<String, dynamic>?;
-        // Use map access instead of .get() to avoid crashes if field is missing
-        if (userData != null && userData['isBlocked'] == true) return 'blocked';
+        final userData = userDoc.data();
+        if (userData != null) {
+          if (userData['isBlocked'] == true) return 'blocked';
+          // Check for verification (default to true for legacy users without the field, or force verification if you prefer strict mode. 
+          // Given the request, we should probably enforce it for new users who have isVerified=false)
+          if (userData['isVerified'] == false) return 'unverified';
+        }
       }
 
       await prefs.setString('user_role', 'student');
@@ -73,6 +78,8 @@ class AuthGate extends StatelessWidget {
                   return const AgentDashboard();
                 case 'agent_pending':
                   return const PendingApprovalPage();
+                case 'unverified':
+                  return const VerifyEmailPage();
                 case 'blocked':
                   return const Scaffold(
                     body: Center(

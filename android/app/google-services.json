@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "33041190550-2lbpib6h8hn9nd7rsio4raalgbtcstab.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.stayhub.app",
+            "certificate_hash": "f2ba05d19c76b91b08bb771090c66316e20ce195"
+          }
+        },
+        {
           "client_id": "33041190550-fnjqg7c0qj9pr5ebba4g2vgh0hqrm79v.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

@@ -7,24 +7,34 @@ class HostelHorizontalCard extends StatelessWidget {
 
   const HostelHorizontalCard({super.key, required this.data});
 
+  String _getSecureUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    if (url.startsWith('http://')) {
+      return url.replaceFirst('http://', 'https://');
+    }
+    return url;
+  }
+
   @override
   Widget build(BuildContext context) {
     final bool isFull = (data['isFull'] ?? false) || (data['capacity'] ?? 0) == 0;
+    // ... (rest of the build method init)
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final double screenWidth = MediaQuery.of(context).size.width;
-    final double cardWidth = screenWidth * 0.60; // Responsive width
+    // On large screens, card width should not scale infinitely.
+    final double cardWidth = (screenWidth > 600) ? 350.0 : (screenWidth * 0.75);
 
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HostelDetailsPage(hostel: data))),
       child: Container(
         width: cardWidth,
-        margin: const EdgeInsets.only(right: 16, bottom: 8, top: 4), // Added top margin for shadow
+        margin: const EdgeInsets.only(right: 16, bottom: 8, top: 4), 
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(24), // Softer corners
+          borderRadius: BorderRadius.circular(24), 
           boxShadow: [
              BoxShadow(
-               color: isDark ? Colors.black.withOpacity(0.3) : Colors.grey.withOpacity(0.15),
+               color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.15),
                blurRadius: 12, 
                offset: const Offset(0, 6)
              )
@@ -39,11 +49,11 @@ class HostelHorizontalCard extends StatelessWidget {
               children: [
                 ClipRRect(
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                  child: Hero( // Nice animation
+                  child: Hero( 
                     tag: 'hostel_image_${data['id']}',
                     child: CachedNetworkImage(
-                      imageUrl: data['image'] ?? '',
-                      height: 145, // Reduced to safe height
+                      imageUrl: _getSecureUrl(data['image']),
+                      height: 145, 
                       width: double.infinity,
                       fit: BoxFit.cover,
                       placeholder: (_,__) => Container(color: Colors.grey[200]),
@@ -51,15 +61,16 @@ class HostelHorizontalCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                // ... (rest of stack)
                 
-                // Overlay Gradient for text readability if needed (optional, but good for "Price on Image")
+                // Overlay Gradient
                 Positioned(
                   bottom: 0, left: 0, right: 0,
                   child: Container(
                     height: 60,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.black.withOpacity(0.6), Colors.transparent],
+                        colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                       )
@@ -73,9 +84,9 @@ class HostelHorizontalCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.6), // Consistent dark pill looks premium
+                      color: Colors.black.withValues(alpha: 0.6), 
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5)
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 0.5)
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -102,10 +113,10 @@ class HostelHorizontalCard extends StatelessWidget {
                     ),
                   )
                 else 
-                   Positioned( // "Like" button if not full
+                   Positioned( 
                     top: 8, right: 8,
                     child: CircleAvatar(
-                      backgroundColor: Colors.white.withOpacity(0.9),
+                      backgroundColor: Colors.white.withValues(alpha: 0.9),
                       radius: 16,
                       child: Icon(Icons.favorite_border_rounded, size: 18, color: Colors.grey[600]),
                     )
@@ -119,7 +130,7 @@ class HostelHorizontalCard extends StatelessWidget {
                      decoration: BoxDecoration(
                        color: Theme.of(context).primaryColor,
                        borderRadius: BorderRadius.circular(12),
-                       boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))]
+                       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2))]
                      ),
                      child: Text(
                       "GHS ${data['price'] ?? '0'}", 
@@ -150,7 +161,7 @@ class HostelHorizontalCard extends StatelessWidget {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Icon(Icons.location_on_rounded, size: 14, color: Theme.of(context).primaryColor.withOpacity(0.7)),
+                      Icon(Icons.location_on_rounded, size: 14, color: Theme.of(context).primaryColor.withValues(alpha: 0.7)),
                       const SizedBox(width: 4),
                       Expanded(
                         child: Text(
@@ -186,7 +197,7 @@ class HostelHorizontalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Theme.of(context).dividerColor.withOpacity(0.1),
+        color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(icon, size: 10, color: Colors.grey),

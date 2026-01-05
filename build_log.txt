@@ -1,0 +1,544 @@
+[ +316 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[ +291 ms] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterWebSdk' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[        ] Artifact Instance of 'LegacyCanvasKitRemover' is not required, skipping update.
+[   +9 ms] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[ +369 ms] Artifact Instance of 'MaterialFonts' is not required, skipping update.
+[        ] Artifact Instance of 'GradleWrapper' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidGenSnapshotArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'AndroidInternalBuildArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IOSEngineArtifacts' is not required, skipping update.
+[   +4 ms] Artifact Instance of 'FlutterEngineStamp' is not required, skipping update.
+[   +4 ms] Artifact Instance of 'FlutterSdk' is not required, skipping update.
+[        ] Artifact Instance of 'WindowsEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'MacOSEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxEngineArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'LinuxFuchsiaSDKArtifacts' is not required, skipping update.
+[   +1 ms] Artifact Instance of 'MacOSFuchsiaSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerSDKArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FlutterRunnerDebugSymbols' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'IosUsbArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'FontSubsetArtifacts' is not required, skipping update.
+[        ] Artifact Instance of 'PubDependencies' is not required, skipping update.
+[  +27 ms] Skipping pub get: version match.
+[ +152 ms] Found plugin flutter_native_splash at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_native_splash-2.4.7\
+[  +54 ms] Found plugin webview_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter-4.13.0\
+[   +3 ms] Found plugin webview_flutter_wkwebview at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_wkwebview-3.23.5\
+[  +18 ms] Found plugin webview_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_android-4.10.11\
+[   +6 ms] Found plugin video_player at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.10.1\
+[   +5 ms] Found plugin video_player_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_web-2.4.0\
+[  +19 ms] Found plugin video_player_avfoundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_avfoundation-2.8.8\
+[   +7 ms] Found plugin video_player_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_android-2.9.1\
+[  +22 ms] Found plugin url_launcher at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[  +10 ms] Found plugin url_launcher_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[  +19 ms] Found plugin url_launcher_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[   +5 ms] Found plugin url_launcher_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[   +6 ms] Found plugin url_launcher_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[   +5 ms] Found plugin url_launcher_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.3.6\
+[   +7 ms] Found plugin url_launcher_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[  +22 ms] Found plugin shared_preferences at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[   +8 ms] Found plugin shared_preferences_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +6 ms] Found plugin path_provider_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[  +12 ms] Found plugin shared_preferences_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +2 ms] Found plugin shared_preferences_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +1 ms] Found plugin path_provider_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +3 ms] Found plugin shared_preferences_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[   +1 ms] Found plugin shared_preferences_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[   +3 ms] Found plugin share_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-10.0.0\
+[   +7 ms] Found plugin path_provider at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[   +2 ms] Found plugin path_provider_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[  +12 ms] Found plugin pointer_interceptor at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor-0.10.1+2\
+[   +1 ms] Found plugin pointer_interceptor_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_web-0.10.3\
+[   +3 ms] Found plugin pointer_interceptor_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_ios-0.10.1+1\
+[   +5 ms] Found plugin permission_handler at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-11.4.0\
+[   +1 ms] Found plugin permission_handler_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +3 ms] Found plugin permission_handler_html at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[   +2 ms] Found plugin permission_handler_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[   +2 ms] Found plugin permission_handler_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-12.1.0\
+[   +3 ms] Found plugin package_info_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\package_info_plus-8.3.1\
+[   +8 ms] Found plugin mobile_scanner at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\mobile_scanner-7.1.4\
+[   +1 ms] Found plugin location at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location-7.0.0\
+[   +1 ms] Found plugin location_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location_web-5.0.3\
+[   +6 ms] Found plugin image_picker at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[   +1 ms] Found plugin image_picker_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +3 ms] Found plugin file_selector_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[   +2 ms] Found plugin image_picker_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[   +1 ms] Found plugin file_selector_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[   +1 ms] Found plugin image_picker_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[   +1 ms] Found plugin file_selector_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[   +2 ms] Found plugin image_picker_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[   +2 ms] Found plugin image_picker_for_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[   +1 ms] Found plugin image_picker_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[   +2 ms] Found plugin flutter_plugin_android_lifecycle at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[   +1 ms] Found plugin google_sign_in at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[   +1 ms] Found plugin google_sign_in_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +3 ms] Found plugin google_sign_in_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[   +1 ms] Found plugin google_sign_in_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +2 ms] Found plugin google_maps_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter-2.14.0\
+[   +2 ms] Found plugin google_maps_flutter_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_web-0.5.14+3\
+[   +7 ms] Found plugin google_maps_flutter_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_ios-2.15.7\
+[   +2 ms] Found plugin google_maps_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_android-2.18.6\
+[   +3 ms] Found plugin geolocator at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator-10.1.1\
+[   +2 ms] Found plugin geolocator_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_windows-0.2.5\
+[   +3 ms] Found plugin geolocator_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_web-2.2.1\
+[   +1 ms] Found plugin geolocator_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_apple-2.3.13\
+[   +1 ms] Found plugin geolocator_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_android-4.6.2\
+[   +6 ms] Found plugin flutter_local_notifications at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications-19.5.0\
+[   +4 ms] Found plugin flutter_local_notifications_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_windows-1.0.3\
+[   +2 ms] Found plugin flutter_local_notifications_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_linux-6.0.0\
+[   +4 ms] Found plugin sqflite at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +5 ms] Found plugin sqflite_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[   +2 ms] Found plugin sqflite_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+2\
+[   +8 ms] Found plugin firebase_messaging at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging-14.9.4\
+[   +1 ms] Found plugin firebase_messaging_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging_web-3.8.7\
+[   +2 ms] Found plugin firebase_core at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-2.32.0\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.17.5\
+[   +3 ms] Found plugin firebase_auth at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-4.20.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.12.0\
+[  +13 ms] Found plugin cloud_firestore at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-4.17.5\
+[   +1 ms] Found plugin cloud_firestore_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-3.12.5\
+[   +8 ms] Found plugin audioplayers at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[   +1 ms] Found plugin audioplayers_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[   +2 ms] Found plugin audioplayers_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[   +1 ms] Found plugin audioplayers_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[   +1 ms] Found plugin audioplayers_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[   +1 ms] Found plugin audioplayers_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[   +1 ms] Found plugin app_links at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links-6.4.1\
+[   +1 ms] Found plugin app_links_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_web-1.0.4\
+[   +3 ms] Found plugin app_links_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_linux-1.0.3\
+[   +2 ms] Found plugin gtk at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\gtk-2.1.0\
+[  +55 ms] Found plugin flutter_native_splash at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_native_splash-2.4.7\
+[  +15 ms] Found plugin webview_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter-4.13.0\
+[   +1 ms] Found plugin webview_flutter_wkwebview at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_wkwebview-3.23.5\
+[   +4 ms] Found plugin webview_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_android-4.10.11\
+[        ] Found plugin video_player at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.10.1\
+[        ] Found plugin video_player_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_web-2.4.0\
+[   +2 ms] Found plugin video_player_avfoundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_avfoundation-2.8.8\
+[   +1 ms] Found plugin video_player_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_android-2.9.1\
+[   +4 ms] Found plugin url_launcher at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[   +1 ms] Found plugin url_launcher_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +2 ms] Found plugin url_launcher_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[   +1 ms] Found plugin url_launcher_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[   +1 ms] Found plugin url_launcher_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[        ] Found plugin url_launcher_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.3.6\
+[        ] Found plugin url_launcher_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[   +4 ms] Found plugin shared_preferences at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[   +1 ms] Found plugin shared_preferences_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +1 ms] Found plugin path_provider_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +3 ms] Found plugin shared_preferences_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[   +1 ms] Found plugin shared_preferences_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[   +1 ms] Found plugin path_provider_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +3 ms] Found plugin shared_preferences_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[   +2 ms] Found plugin shared_preferences_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[   +1 ms] Found plugin share_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-10.0.0\
+[   +5 ms] Found plugin path_provider at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[   +1 ms] Found plugin path_provider_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[   +2 ms] Found plugin path_provider_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[  +11 ms] Found plugin pointer_interceptor at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor-0.10.1+2\
+[        ] Found plugin pointer_interceptor_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_web-0.10.3\
+[   +2 ms] Found plugin pointer_interceptor_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_ios-0.10.1+1\
+[   +3 ms] Found plugin permission_handler at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-11.4.0\
+[   +1 ms] Found plugin permission_handler_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +1 ms] Found plugin permission_handler_html at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[        ] Found plugin permission_handler_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[        ] Found plugin permission_handler_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-12.1.0\
+[   +1 ms] Found plugin package_info_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\package_info_plus-8.3.1\
+[   +3 ms] Found plugin mobile_scanner at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\mobile_scanner-7.1.4\
+[        ] Found plugin location at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location-7.0.0\
+[        ] Found plugin location_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location_web-5.0.3\
+[   +4 ms] Found plugin image_picker at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[   +1 ms] Found plugin image_picker_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +1 ms] Found plugin file_selector_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[   +1 ms] Found plugin image_picker_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[        ] Found plugin file_selector_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[        ] Found plugin image_picker_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[        ] Found plugin file_selector_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[        ] Found plugin image_picker_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[        ] Found plugin image_picker_for_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[   +1 ms] Found plugin image_picker_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[        ] Found plugin flutter_plugin_android_lifecycle at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[   +1 ms] Found plugin google_sign_in at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[   +1 ms] Found plugin google_sign_in_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +3 ms] Found plugin google_sign_in_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[   +3 ms] Found plugin google_sign_in_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +4 ms] Found plugin google_maps_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter-2.14.0\
+[   +1 ms] Found plugin google_maps_flutter_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_web-0.5.14+3\
+[   +4 ms] Found plugin google_maps_flutter_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_ios-2.15.7\
+[        ] Found plugin google_maps_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_android-2.18.6\
+[   +1 ms] Found plugin geolocator at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator-10.1.1\
+[   +1 ms] Found plugin geolocator_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_windows-0.2.5\
+[   +3 ms] Found plugin geolocator_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_web-2.2.1\
+[   +1 ms] Found plugin geolocator_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_apple-2.3.13\
+[   +1 ms] Found plugin geolocator_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_android-4.6.2\
+[   +2 ms] Found plugin flutter_local_notifications at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications-19.5.0\
+[   +1 ms] Found plugin flutter_local_notifications_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_windows-1.0.3\
+[   +1 ms] Found plugin flutter_local_notifications_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_linux-6.0.0\
+[   +3 ms] Found plugin sqflite at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +4 ms] Found plugin sqflite_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[   +1 ms] Found plugin sqflite_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+2\
+[   +3 ms] Found plugin firebase_messaging at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging-14.9.4\
+[   +1 ms] Found plugin firebase_messaging_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging_web-3.8.7\
+[   +2 ms] Found plugin firebase_core at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-2.32.0\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.17.5\
+[   +2 ms] Found plugin firebase_auth at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-4.20.0\
+[   +1 ms] Found plugin firebase_auth_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.12.0\
+[  +11 ms] Found plugin cloud_firestore at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-4.17.5\
+[   +1 ms] Found plugin cloud_firestore_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-3.12.5\
+[   +6 ms] Found plugin audioplayers at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[   +1 ms] Found plugin audioplayers_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[   +1 ms] Found plugin audioplayers_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[        ] Found plugin audioplayers_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[   +1 ms] Found plugin audioplayers_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[   +1 ms] Found plugin audioplayers_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[        ] Found plugin app_links at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links-6.4.1\
+[        ] Found plugin app_links_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_web-1.0.4\
+[   +1 ms] Found plugin app_links_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_linux-1.0.3\
+[   +1 ms] Found plugin gtk at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\gtk-2.1.0\
+[  +12 ms] Skipping generating web_plugin_registrant.dart because it is up-to-date.
+[  +29 ms] Found plugin flutter_native_splash at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_native_splash-2.4.7\
+[   +8 ms] Found plugin webview_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter-4.13.0\
+[        ] Found plugin webview_flutter_wkwebview at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_wkwebview-3.23.5\
+[   +2 ms] Found plugin webview_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_android-4.10.11\
+[   +1 ms] Found plugin video_player at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.10.1\
+[   +1 ms] Found plugin video_player_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_web-2.4.0\
+[   +1 ms] Found plugin video_player_avfoundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_avfoundation-2.8.8\
+[        ] Found plugin video_player_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_android-2.9.1\
+[   +1 ms] Found plugin url_launcher at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[        ] Found plugin url_launcher_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +1 ms] Found plugin url_launcher_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[        ] Found plugin url_launcher_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[        ] Found plugin url_launcher_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[        ] Found plugin url_launcher_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.3.6\
+[   +1 ms] Found plugin url_launcher_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[   +2 ms] Found plugin shared_preferences at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[        ] Found plugin shared_preferences_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[        ] Found plugin path_provider_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +3 ms] Found plugin shared_preferences_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] Found plugin shared_preferences_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] Found plugin path_provider_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[        ] Found plugin shared_preferences_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] Found plugin shared_preferences_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[        ] Found plugin share_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-10.0.0\
+[   +2 ms] Found plugin path_provider at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[        ] Found plugin path_provider_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +3 ms] Found plugin pointer_interceptor at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor-0.10.1+2\
+[        ] Found plugin pointer_interceptor_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_web-0.10.3\
+[   +1 ms] Found plugin pointer_interceptor_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_ios-0.10.1+1\
+[   +1 ms] Found plugin permission_handler at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-11.4.0\
+[   +1 ms] Found plugin permission_handler_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +1 ms] Found plugin permission_handler_html at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[        ] Found plugin permission_handler_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[        ] Found plugin permission_handler_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-12.1.0\
+[        ] Found plugin package_info_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\package_info_plus-8.3.1\
+[   +2 ms] Found plugin mobile_scanner at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\mobile_scanner-7.1.4\
+[        ] Found plugin location at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location-7.0.0\
+[        ] Found plugin location_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location_web-5.0.3\
+[   +1 ms] Found plugin image_picker at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[        ] Found plugin image_picker_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +1 ms] Found plugin file_selector_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[        ] Found plugin image_picker_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[        ] Found plugin file_selector_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[        ] Found plugin image_picker_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[        ] Found plugin file_selector_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[        ] Found plugin image_picker_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[        ] Found plugin image_picker_for_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[        ] Found plugin image_picker_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[   +1 ms] Found plugin flutter_plugin_android_lifecycle at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[        ] Found plugin google_sign_in at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[        ] Found plugin google_sign_in_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +1 ms] Found plugin google_sign_in_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[        ] Found plugin google_sign_in_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +1 ms] Found plugin google_maps_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter-2.14.0\
+[        ] Found plugin google_maps_flutter_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_web-0.5.14+3\
+[   +2 ms] Found plugin google_maps_flutter_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_ios-2.15.7\
+[        ] Found plugin google_maps_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_android-2.18.6\
+[   +1 ms] Found plugin geolocator at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator-10.1.1\
+[        ] Found plugin geolocator_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_windows-0.2.5\
+[   +1 ms] Found plugin geolocator_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_web-2.2.1\
+[        ] Found plugin geolocator_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_apple-2.3.13\
+[        ] Found plugin geolocator_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_android-4.6.2\
+[   +2 ms] Found plugin flutter_local_notifications at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications-19.5.0\
+[   +1 ms] Found plugin flutter_local_notifications_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_windows-1.0.3\
+[   +1 ms] Found plugin flutter_local_notifications_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_linux-6.0.0\
+[   +2 ms] Found plugin sqflite at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +2 ms] Found plugin sqflite_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[        ] Found plugin sqflite_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+2\
+[   +1 ms] Found plugin firebase_messaging at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging-14.9.4\
+[        ] Found plugin firebase_messaging_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging_web-3.8.7\
+[   +1 ms] Found plugin firebase_core at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-2.32.0\
+[        ] Found plugin firebase_core_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.17.5\
+[   +1 ms] Found plugin firebase_auth at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-4.20.0\
+[        ] Found plugin firebase_auth_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.12.0\
+[   +7 ms] Found plugin cloud_firestore at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-4.17.5\
+[        ] Found plugin cloud_firestore_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-3.12.5\
+[   +3 ms] Found plugin audioplayers at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[        ] Found plugin audioplayers_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[        ] Found plugin audioplayers_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[        ] Found plugin audioplayers_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[        ] Found plugin audioplayers_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[        ] Found plugin audioplayers_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[        ] Found plugin app_links at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links-6.4.1\
+[        ] Found plugin app_links_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_web-1.0.4\
+[   +2 ms] Found plugin app_links_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_linux-1.0.3\
+[   +1 ms] Found plugin gtk at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\gtk-2.1.0\
+[  +15 ms] Generating C:\Users\atubt\AndroidStudioProjects\stayhub\android\app\src\main\java\io\flutter\plugins\GeneratedPluginRegistrant.java
+[   +2 ms] Skipping generating GeneratedPluginRegistrant.java because it is up-to-date.
+[   +4 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.h because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugin_registrant.cc because it is up-to-date.
+[   +1 ms] Skipping generating generated_plugins.cmake because it is up-to-date.
+[   +2 ms] Skipping generating GeneratedPluginRegistrant.h because it is up-to-date.
+[   +2 ms] Skipping generating GeneratedPluginRegistrant.m because it is up-to-date.
+[   +2 ms] Skipping generating GeneratedPluginRegistrant.swift because it is up-to-date.
+[ +120 ms] Found plugin flutter_native_splash at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_native_splash-2.4.7\
+[   +9 ms] Found plugin webview_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter-4.13.0\
+[        ] Found plugin webview_flutter_wkwebview at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_wkwebview-3.23.5\
+[   +1 ms] Found plugin webview_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\webview_flutter_android-4.10.11\
+[        ] Found plugin video_player at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player-2.10.1\
+[        ] Found plugin video_player_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_web-2.4.0\
+[   +1 ms] Found plugin video_player_avfoundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_avfoundation-2.8.8\
+[        ] Found plugin video_player_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\video_player_android-2.9.1\
+[   +1 ms] Found plugin url_launcher at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher-6.3.2\
+[        ] Found plugin url_launcher_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_windows-3.1.5\
+[   +1 ms] Found plugin url_launcher_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_web-2.4.1\
+[        ] Found plugin url_launcher_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_macos-3.2.5\
+[        ] Found plugin url_launcher_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_linux-3.2.2\
+[        ] Found plugin url_launcher_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_ios-6.3.6\
+[        ] Found plugin url_launcher_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\url_launcher_android-6.3.28\
+[   +2 ms] Found plugin shared_preferences at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences-2.5.4\
+[   +1 ms] Found plugin shared_preferences_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_windows-2.4.1\
+[   +1 ms] Found plugin path_provider_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_windows-2.3.0\
+[   +2 ms] Found plugin shared_preferences_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_web-2.4.3\
+[        ] Found plugin shared_preferences_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_linux-2.4.1\
+[        ] Found plugin path_provider_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_linux-2.2.1\
+[   +1 ms] Found plugin shared_preferences_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_foundation-2.5.6\
+[        ] Found plugin shared_preferences_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\shared_preferences_android-2.4.18\
+[        ] Found plugin share_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\share_plus-10.0.0\
+[   +1 ms] Found plugin path_provider at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider-2.1.5\
+[        ] Found plugin path_provider_foundation at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_foundation-2.5.1\
+[        ] Found plugin path_provider_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\path_provider_android-2.2.22\
+[   +3 ms] Found plugin pointer_interceptor at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor-0.10.1+2\
+[   +1 ms] Found plugin pointer_interceptor_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_web-0.10.3\
+[   +2 ms] Found plugin pointer_interceptor_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\pointer_interceptor_ios-0.10.1+1\
+[   +2 ms] Found plugin permission_handler at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler-11.4.0\
+[        ] Found plugin permission_handler_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_windows-0.2.1\
+[   +1 ms] Found plugin permission_handler_html at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_html-0.1.3+5\
+[        ] Found plugin permission_handler_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_apple-9.4.7\
+[   +1 ms] Found plugin permission_handler_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\permission_handler_android-12.1.0\
+[   +1 ms] Found plugin package_info_plus at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\package_info_plus-8.3.1\
+[   +2 ms] Found plugin mobile_scanner at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\mobile_scanner-7.1.4\
+[   +1 ms] Found plugin location at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location-7.0.0\
+[   +1 ms] Found plugin location_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\location_web-5.0.3\
+[   +5 ms] Found plugin image_picker at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker-1.2.1\
+[        ] Found plugin image_picker_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_windows-0.2.2\
+[   +1 ms] Found plugin file_selector_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_windows-0.9.3+5\
+[   +1 ms] Found plugin image_picker_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_macos-0.2.2+1\
+[        ] Found plugin file_selector_macos at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_macos-0.9.5\
+[        ] Found plugin image_picker_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_linux-0.2.2\
+[        ] Found plugin file_selector_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\file_selector_linux-0.9.4\
+[        ] Found plugin image_picker_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_ios-0.8.13+3\
+[        ] Found plugin image_picker_for_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_for_web-3.1.1\
+[        ] Found plugin image_picker_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\image_picker_android-0.8.13+10\
+[        ] Found plugin flutter_plugin_android_lifecycle at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_plugin_android_lifecycle-2.0.33\
+[        ] Found plugin google_sign_in at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in-6.3.0\
+[        ] Found plugin google_sign_in_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_web-0.12.4+4\
+[   +3 ms] Found plugin google_sign_in_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_ios-5.9.0\
+[   +1 ms] Found plugin google_sign_in_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_sign_in_android-6.2.1\
+[   +1 ms] Found plugin google_maps_flutter at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter-2.14.0\
+[        ] Found plugin google_maps_flutter_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_web-0.5.14+3\
+[   +2 ms] Found plugin google_maps_flutter_ios at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_ios-2.15.7\
+[        ] Found plugin google_maps_flutter_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\google_maps_flutter_android-2.18.6\
+[   +1 ms] Found plugin geolocator at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator-10.1.1\
+[        ] Found plugin geolocator_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_windows-0.2.5\
+[   +1 ms] Found plugin geolocator_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_web-2.2.1\
+[        ] Found plugin geolocator_apple at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_apple-2.3.13\
+[   +1 ms] Found plugin geolocator_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\geolocator_android-4.6.2\
+[   +4 ms] Found plugin flutter_local_notifications at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications-19.5.0\
+[   +1 ms] Found plugin flutter_local_notifications_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_windows-1.0.3\
+[   +1 ms] Found plugin flutter_local_notifications_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\flutter_local_notifications_linux-6.0.0\
+[   +2 ms] Found plugin sqflite at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite-2.4.2\
+[   +2 ms] Found plugin sqflite_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_darwin-2.4.2\
+[        ] Found plugin sqflite_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\sqflite_android-2.4.2+2\
+[   +2 ms] Found plugin firebase_messaging at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging-14.9.4\
+[        ] Found plugin firebase_messaging_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_messaging_web-3.8.7\
+[        ] Found plugin firebase_core at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core-2.32.0\
+[   +1 ms] Found plugin firebase_core_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_core_web-2.17.5\
+[   +2 ms] Found plugin firebase_auth at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth-4.20.0\
+[        ] Found plugin firebase_auth_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\firebase_auth_web-5.12.0\
+[   +5 ms] Found plugin cloud_firestore at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore-4.17.5\
+[        ] Found plugin cloud_firestore_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\cloud_firestore_web-3.12.5\
+[   +3 ms] Found plugin audioplayers at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers-6.5.1\
+[        ] Found plugin audioplayers_windows at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_windows-4.2.1\
+[        ] Found plugin audioplayers_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_web-5.1.1\
+[        ] Found plugin audioplayers_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_linux-4.2.1\
+[        ] Found plugin audioplayers_darwin at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_darwin-6.3.0\
+[        ] Found plugin audioplayers_android at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\audioplayers_android-5.2.1\
+[        ] Found plugin app_links at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links-6.4.1\
+[        ] Found plugin app_links_web at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_web-1.0.4\
+[   +1 ms] Found plugin app_links_linux at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\app_links_linux-1.0.3\
+[        ] Found plugin gtk at C:\Users\atubt\AppData\Local\Pub\Cache\hosted\pub.dev\gtk-2.1.0\
+[   +1 ms] generated_plugin_registrant.dart not found. Skipping.
+[        ] Compiling lib\main.dart for the Web...
+[   +4 ms] Initializing file store
+[   +3 ms] Done initializing file store
+[  +41 ms] Skipping target: web_entrypoint
+[   +1 ms] invalidated build due to missing files: C:\Users\atubt\AndroidStudioProjects\stayhub\web\*\index.html, C:\Users\atubt\AndroidStudioProjects\stayhub\web\flutter_bootstrap.js
+[   +5 ms] Skipping target: gen_localizations
+[   +2 ms] web_templated_files: Starting due to {InvalidatedReasonKind.outputMissing: The following outputs were missing: C:\Users\atubt\AndroidStudioProjects\stayhub\build\web\*\index.html, InvalidatedReasonKind.inputMissing: The following inputs were missing: C:\Users\atubt\AndroidStudioProjects\stayhub\web\*\index.html,C:\Users\atubt\AndroidStudioProjects\stayhub\web\flutter_bootstrap.js, InvalidatedReasonKind.inputChanged: The following inputs have updated contents: C:\Users\atubt\AndroidStudioProjects\stayhub\build\web\flutter_bootstrap.js}
+[   +1 ms] web_static_assets: Starting due to {InvalidatedReasonKind.outputMissing: The following outputs were missing: C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\flutter.js,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\canvaskit.js,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\canvaskit.js.symbols,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\canvaskit.wasm,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\chromium\canvaskit.js,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\chromium\canvaskit.js.symbols,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\chromium\canvaskit.wasm,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\skwasm.js,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\skwasm.js.symbols,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\skwasm.wasm,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\skwasm_heavy.js,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\skwasm_heavy.js.symbols,C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\canvaskit\skwasm_heavy.wasm}
+[ +319 ms] web_static_assets: Complete
+[  +17 ms] dart2js: Starting due to {}
+[  +18 ms] executing: C:\flutter\bin\cache\dart-sdk\bin\dart.exe compile js --platform-binaries=C:\flutter\bin\cache\flutter_web_sdk\kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.35.4 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=d693b4b9db -DFLUTTER_ENGINE_REVISION=c298091351 -DFLUTTER_DART_VERSION=3.9.2 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/c29809135135e262a912cf583b2c90deb9ded610/ --native-null-assertions --no-source-maps -O4 --minify -o C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\app.dill --packages=C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\package_config.json --cfe-only C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\main.dart
+[   +4 ms] dart2wasm: Starting due to {}
+[   +2 ms] executing: C:\flutter\bin\cache\dart-sdk\bin\dart.exe compile wasm --packages=C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\package_config.json --extra-compiler-option=--platform=C:\flutter\bin\cache\flutter_web_sdk\kernel\dart2wasm_platform.dill -Ddart.vm.profile=false -Ddart.vm.product=true --extra-compiler-option=--delete-tostring-package-uri=dart:ui --extra-compiler-option=--delete-tostring-package-uri=package:flutter --extra-compiler-option=--import-shared-memory --extra-compiler-option=--shared-memory-max-pages=32768 -DFLUTTER_VERSION=3.35.4 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=d693b4b9db -DFLUTTER_ENGINE_REVISION=c298091351 -DFLUTTER_DART_VERSION=3.9.2 -DFLUTTER_WEB_USE_SKIA=false -DFLUTTER_WEB_USE_SKWASM=true -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/c29809135135e262a912cf583b2c90deb9ded610/ --extra-compiler-option=--depfile=C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\dart2wasm.d -O2 --strip-wasm --no-source-maps --minify --extra-compiler-option=--dry-run -o C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\main.dart.wasm C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\main.dart
+[ +214 ms] web_templated_files: Complete
+[+29995 ms] Found incompatibilities with WebAssembly.
+
+            package:geolocator_web/src/html_geolocation_manager.dart 1:1 - dart:html unsupported (0)
+            package:geolocator_web/src/html_permissions_manager.dart 1:1 - dart:html unsupported (0)
+            package:geolocator_web/src/utils.dart 2:1 - dart:html unsupported (0)
+[  +11 ms] Wasm dry run findings:
+[   +3 ms] Found incompatibilities with WebAssembly.
+
+           package:geolocator_web/src/html_geolocation_manager.dart 1:1 - dart:html unsupported (0)
+           package:geolocator_web/src/html_permissions_manager.dart 1:1 - dart:html unsupported (0)
+           package:geolocator_web/src/utils.dart 2:1 - dart:html unsupported (0)
+
+[        ] Consider addressing these issues to enable wasm builds. See docs for more info: https://docs.flutter.dev/platform-integration/web/wasm
+
+[   +2 ms] Use --no-wasm-dry-run to disable these warnings.
+[  +33 ms] dart2wasm: Complete
+[+3292 ms] lib/features/agent/agent_clips_page.dart:64:7:
+           Error: No named parameter with the name 'appBar'.
+                 appBar: AppBar(
+                 ^^^^^^
+           /C:/flutter/packages/flutter/lib/src/material/app_bar.dart:191:3:
+           Info: Found this candidate, but the arguments don't match.
+             AppBar({
+             ^^^^^^
+           Error: Compilation failed.
+[   +1 ms] Persisting file store
+[   +3 ms] Done persisting file store
+[   +7 ms] Target dart2js failed: ProcessException: Process exited abnormally with exit code 1:
+           lib/features/agent/agent_clips_page.dart:64:7:
+           Error: No named parameter with the name 'appBar'.
+                 appBar: AppBar(
+                 ^^^^^^
+           /C:/flutter/packages/flutter/lib/src/material/app_bar.dart:191:3:
+           Info: Found this candidate, but the arguments don't match.
+             AppBar({
+             ^^^^^^
+           Error: Compilation failed.
+             Command: C:\flutter\bin\cache\dart-sdk\bin\dart.exe compile js --platform-binaries=C:\flutter\bin\cache\flutter_web_sdk\kernel --invoker=flutter_tool -Ddart.vm.product=true -DFLUTTER_VERSION=3.35.4 -DFLUTTER_CHANNEL=stable -DFLUTTER_GIT_URL=https://github.com/flutter/flutter.git -DFLUTTER_FRAMEWORK_REVISION=d693b4b9db -DFLUTTER_ENGINE_REVISION=c298091351 -DFLUTTER_DART_VERSION=3.9.2 -DFLUTTER_WEB_USE_SKIA=true -DFLUTTER_WEB_USE_SKWASM=false -DFLUTTER_WEB_CANVASKIT_URL=https://www.gstatic.com/flutter-canvaskit/c29809135135e262a912cf583b2c90deb9ded610/ --native-null-assertions --no-source-maps -O4 --minify -o C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\app.dill --packages=C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\package_config.json --cfe-only C:\Users\atubt\AndroidStudioProjects\stayhub\.dart_tool\flutter_build\5a66eb9763ecd159be7236cb18c7f8b9\main.dart
+           #0      RunResult.throwException (package:flutter_tools/src/base/process.dart:118:5)
+           #1      _DefaultProcessUtils.run (package:flutter_tools/src/base/process.dart:344:19)
+           <asynchronous suspension>
+           #2      Dart2JSTarget.build (package:flutter_tools/src/build_system/targets/web.dart:204:5)
+           <asynchronous suspension>
+           #3      _BuildInstance._invokeInternal (package:flutter_tools/src/build_system/build_system.dart:873:9)
+           <asynchronous suspension>
+           #4      Future.wait.<anonymous closure> (dart:async/future.dart:525:21)
+           <asynchronous suspension>
+           #5      _BuildInstance.invokeTarget (package:flutter_tools/src/build_system/build_system.dart:811:32)
+           <asynchronous suspension>
+           #6      Future.wait.<anonymous closure> (dart:async/future.dart:525:21)
+           <asynchronous suspension>
+           #7      _BuildInstance.invokeTarget (package:flutter_tools/src/build_system/build_system.dart:811:32)
+           <asynchronous suspension>
+           #8      FlutterBuildSystem.build (package:flutter_tools/src/build_system/build_system.dart:631:16)
+           <asynchronous suspension>
+           #9      WebBuilder.buildWeb (package:flutter_tools/src/web/compile.dart:90:34)
+           <asynchronous suspension>
+           #10     BuildWebCommand.runCommand (package:flutter_tools/src/commands/build_web.dart:282:5)
+           <asynchronous suspension>
+           #11     FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1581:27)
+           <asynchronous suspension>
+           #12     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #13     CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+           <asynchronous suspension>
+           #14     FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:503:9)
+           <asynchronous suspension>
+           #15     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #16     FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:438:5)
+           <asynchronous suspension>
+           #17     run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:98:11)
+           <asynchronous suspension>
+           #18     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #19     main (package:flutter_tools/executable.dart:101:3)
+           <asynchronous suspension>
+
+[   +2 ms] Compiling lib\main.dart for the Web... (completed in 34.0s)
+[        ] "flutter web" took 35,741ms.
+[ +143 ms] Error: Failed to compile application for the Web.
+[        ] 
+           #0      throwToolExit (package:flutter_tools/src/base/common.dart:34:3)
+           #1      WebBuilder.buildWeb (package:flutter_tools/src/web/compile.dart:132:7)
+           <asynchronous suspension>
+           #2      BuildWebCommand.runCommand (package:flutter_tools/src/commands/build_web.dart:282:5)
+           <asynchronous suspension>
+           #3      FlutterCommand.run.<anonymous closure> (package:flutter_tools/src/runner/flutter_command.dart:1581:27)
+           <asynchronous suspension>
+           #4      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #5      CommandRunner.runCommand (package:args/command_runner.dart:212:13)
+           <asynchronous suspension>
+           #6      FlutterCommandRunner.runCommand.<anonymous closure> (package:flutter_tools/src/runner/flutter_command_runner.dart:503:9)
+           <asynchronous suspension>
+           #7      AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #8      FlutterCommandRunner.runCommand (package:flutter_tools/src/runner/flutter_command_runner.dart:438:5)
+           <asynchronous suspension>
+           #9      run.<anonymous closure>.<anonymous closure> (package:flutter_tools/runner.dart:98:11)
+           <asynchronous suspension>
+           #10     AppContext.run.<anonymous closure> (package:flutter_tools/src/base/context.dart:154:19)
+           <asynchronous suspension>
+           #11     main (package:flutter_tools/executable.dart:101:3)
+           <asynchronous suspension>
+
+
+[        ] Running 1 shutdown hook
+[   +1 ms] Shutdown hooks complete
+[ +261 ms] exiting with code 1

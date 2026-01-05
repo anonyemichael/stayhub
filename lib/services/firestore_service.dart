@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 // COMPLETE AND RESTORED FIRESTORE SERVICE
 
@@ -40,6 +41,26 @@ class FirestoreService {
     await _db.collection('agents').doc(uid).set(data, SetOptions(merge: true));
   }
 
+  // --- ADMIN MANAGEMENT ---
+  
+  Future<void> addAdmin(String email, String role, String addedBy) async {
+    // We use Email as Document ID for easy lookup/invitation
+    await _db.collection('admins').doc(email).set({
+      'email': email,
+      'role': role, // 'super_admin' or 'content_admin'
+      'addedBy': addedBy,
+      'addedAt': FieldValue.serverTimestamp(),
+    });
+  }
+
+  Future<void> removeAdmin(String email) async {
+    await _db.collection('admins').doc(email).delete();
+  }
+
+  Stream<DocumentSnapshot> getAdminRole(String email) {
+    return _db.collection('admins').doc(email).snapshots();
+  }
+
   // ===========================================================================
   // 2. HOSTELS
   // ===========================================================================
@@ -60,6 +81,10 @@ class FirestoreService {
 
   Future<void> addHostel(Map<String, dynamic> hostelData) async {
     await _db.collection('hostels').add(hostelData);
+  }
+
+  Future<void> updateHostel(String docId, Map<String, dynamic> data) async {
+    await _db.collection('hostels').doc(docId).update(data);
   }
 
   Future<DocumentSnapshot?> findHostelByName(String name) async {
@@ -83,6 +108,10 @@ class FirestoreService {
     } else {
       await clipRef.update({'likes': FieldValue.arrayUnion([uid])});
     }
+  }
+
+  Future<void> deleteClip(String clipId) async {
+    await _db.collection('clips').doc(clipId).delete();
   }
 
   Future<void> addClipComment(String uid, String clipId, String text, String userName, String? userPhoto) async {
@@ -116,7 +145,20 @@ class FirestoreService {
   }
 
   Future<void> addBooking(String uid, Map<String, dynamic> bookingData) async {
-    await _db.collection('users').doc(uid).collection('bookings').add(bookingData);
+    final bookingRef = await _db.collection('users').doc(uid).collection('bookings').add(bookingData);
+    
+    // Notify Agent
+    final agentId = bookingData['agentId'];
+    if (agentId != null) {
+      await createNotification(
+        agentId, 
+        "New Booking Request! 🏠", 
+        "You have a new booking for ${bookingData['hostelName'] ?? 'a property'}. Check Bookings to verify."
+      );
+    }
+    
+    // Notify Admin (Optional, for oversight)
+    // await createNotification('admin_uid', "New Booking", "User $uid booked ${bookingData['hostelName']}");
   }
 
   // Used by Agents to Approve/Reject bookings
@@ -173,13 +215,13 @@ class FirestoreService {
     try {
       final doc = await _db.collection('settings').doc('commission').get();
       if (doc.exists) {
-        // Warning: Field name is 'percent' but value is now Fixed Amount (GHS).
-        return (doc.data()?['platform_fee_percent'] as num?)?.toDouble() ?? 50.0;
+        // Returns percentage (e.g. 2.0 for 2%)
+        return (doc.data()?['platform_fee_percent'] as num?)?.toDouble() ?? 2.0;
       }
     } catch (e) {
-      print("Error fetching commission: $e");
+      debugPrint("Error fetching commission: $e");
     }
-    return 50.0; // Default 50 GHS
+    return 2.0; // Default 2%
   }
 
   Future<void> setGlobalCommission(double amount) async {
@@ -246,15 +288,32 @@ class FirestoreService {
     await _db.collection('users').doc(uid).collection('notifications').doc(notificationId).update({'isRead': true});
   }
 
-   // ===========================================================================
-  // 9. DATA SEEDER
+  // ===========================================================================
+  // 9. MUSIC
+  // ===========================================================================
+
+  Stream<QuerySnapshot> getMusic() {
+    return _db.collection('music').orderBy('title').snapshots();
+  }
+
+  Future<void> seedMusic(List<Map<String, dynamic>> tracks) async {
+    final batch = _db.batch();
+    for (var track in tracks) {
+      final docRef = _db.collection('music').doc(track['id']); // Use ID as doc name
+      batch.set(docRef, track);
+    }
+    await batch.commit();
+  }
+
+  // ===========================================================================
+  // 10. DATA SEEDER
   // ===========================================================================
   Future<void> ensureSampleDataExists() async {
     try {
       final hostels = await _db.collection('hostels').limit(1).get();
 
       if (hostels.docs.isEmpty) {
-        print("✨ Seeding Database...");
+        debugPrint("✨ Seeding Database...");
 
         await _db.collection('admins').doc('placeholder_admin').set({
           'uid': 'REPLACE_WITH_REAL_UID',
@@ -262,10 +321,10 @@ class FirestoreService {
           'role': 'admin',
           'status': 'active'
         });
-        print("✨ Database Seeded!");
+        debugPrint("✨ Database Seeded!");
       }
     } catch (e) {
-      print("Error seeding database: $e");
+      debugPrint("Error seeding database: $e");
     }
   }
 }

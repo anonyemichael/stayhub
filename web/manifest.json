@@ -1,11 +1,11 @@
 {
-    "name": "stayhub",
-    "short_name": "stayhub",
+    "name": "StayHub",
+    "short_name": "StayHub",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0F2027",
+    "theme_color": "#0F2027",
+    "description": "Find and book student hostels securely.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

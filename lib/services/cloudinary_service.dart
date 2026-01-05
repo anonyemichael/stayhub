@@ -1,8 +1,9 @@
-import 'dart:io';
 import 'package:cloudinary_public/cloudinary_public.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 
 class CloudinaryService {
-  // Replaced with your actual Cloudinary credentials
   static const String _cloudName = 'dya7urmkw';
   static const String _uploadPreset = 'stayhub_preset'; 
 
@@ -10,26 +11,36 @@ class CloudinaryService {
 
   CloudinaryService() : _cloudinary = CloudinaryPublic(_cloudName, _uploadPreset, cache: false);
 
-  Future<String?> uploadProfilePicture(File file) async {
+  Future<String?> uploadProfilePicture(XFile xFile) async {
     try {
+      final bytes = await xFile.readAsBytes();
       CloudinaryResponse response = await _cloudinary.uploadFile(
-        CloudinaryFile.fromFile(file.path, resourceType: CloudinaryResourceType.Image),
+        CloudinaryFile.fromByteData(
+          ByteData.view(bytes.buffer),
+          resourceType: CloudinaryResourceType.Image,
+          identifier: xFile.name,
+        ),
       );
       return response.secureUrl;
     } catch (e) {
-      print("Cloudinary Upload Error: $e");
+      debugPrint("Cloudinary Upload Error: $e");
       return null;
     }
   }
 
-  Future<String?> uploadVideo(File file) async {
+  Future<String?> uploadVideo(XFile xFile) async {
     try {
+      final bytes = await xFile.readAsBytes();
       CloudinaryResponse response = await _cloudinary.uploadFile(
-        CloudinaryFile.fromFile(file.path, resourceType: CloudinaryResourceType.Video),
+        CloudinaryFile.fromByteData(
+          ByteData.view(bytes.buffer),
+          resourceType: CloudinaryResourceType.Video,
+          identifier: xFile.name,
+        ),
       );
       return response.secureUrl;
     } catch (e) {
-      print("Cloudinary Video Upload Error: $e");
+      debugPrint("Cloudinary Video Upload Error: $e");
       return null;
     }
   }

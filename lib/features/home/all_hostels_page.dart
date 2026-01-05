@@ -34,8 +34,11 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
         iconTheme: IconThemeData(color: Theme.of(context).primaryColor),
         titleTextStyle: TextStyle(color: Theme.of(context).primaryColor, fontSize: 20, fontWeight: FontWeight.bold),
       ),
-      body: Column(
-        children: [
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1400),
+          child: Column(
+            children: [
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
@@ -77,6 +80,24 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
                   return const Center(child: Text("No hostels match your search."));
                 }
 
+                if (MediaQuery.of(context).size.width > 900) {
+                  return GridView.builder(
+                    padding: const EdgeInsets.all(20),
+                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                      maxCrossAxisExtent: 350,
+                      mainAxisExtent: 320, 
+                      crossAxisSpacing: 20,
+                      mainAxisSpacing: 20,
+                    ),
+                    itemCount: docs.length,
+                    itemBuilder: (context, index) {
+                      final data = docs[index].data() as Map<String, dynamic>;
+                      final hostelId = docs[index].id;
+                      return _buildHostelCard(data, hostelId);
+                    },
+                  );
+                }
+
                 return ListView.separated(
                   padding: const EdgeInsets.all(16),
                   itemCount: docs.length,
@@ -90,7 +111,9 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
               },
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -105,7 +128,7 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
+            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))
           ],
         ),
         child: Column(
@@ -184,7 +207,7 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
                       const SizedBox(width: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(color: Theme.of(context).primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                        decoration: BoxDecoration(color: Theme.of(context).primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
                         child: Text("View Details", style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
                       )
                     ],

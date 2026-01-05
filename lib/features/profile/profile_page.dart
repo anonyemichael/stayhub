@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:provider/provider.dart';
-import 'dart:ui'; // For ImageFilter
+// For ImageFilter
 import 'package:stayhub/features/profile/help_page.dart'; // Support Page
 
 
@@ -69,14 +69,22 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: _userStream(),
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1000),
+          child: StreamBuilder<DocumentSnapshot>(
+            stream: _userStream(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
             return _buildSkeletonLoader();
           }
 
           final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+          final screenWidth = MediaQuery.of(context).size.width;
+
+          if (screenWidth > 900) {
+             return _buildDesktopLayout(context, data);
+          }
 
           return CustomScrollView(
             physics: const BouncingScrollPhysics(),
@@ -85,7 +93,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
               _buildSliverAppBar(context, data),
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(20),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 150),
                   child: Column(
                     children: [
                       FadeTransition(
@@ -93,31 +101,7 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
                         child: _buildStatsRow(data),
                       ),
                       const SizedBox(height: 30),
-                      _buildAnimatedMenuSection(
-                        title: "ACCOUNT",
-                        delay: 200,
-                        items: [
-                          _buildMenuItem(Icons.person, "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfilePage()))),
-                          _buildMenuItem(Icons.wallet, "Wallet", trailing: "GHS ${data['walletBalance'] ?? '0.00'}", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletPage()))),
-                          _buildMenuItem(Icons.message_outlined, "Messages", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentInboxPage()))),
-                          _buildMenuItem(Icons.notifications, "Notifications", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsSettingsPage()))),
-                          _buildMenuItem(Icons.headset_mic_outlined, "Help & Support", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpPage()))),
-                        ],
-                      ),
-                      const SizedBox(height: 24),
-                      _buildAnimatedMenuSection(
-                        title: "PREFERENCES",
-                        delay: 400,
-                        items: [
-                          _buildMenuItem(Icons.dark_mode, "Theme", onTap: () {
-                             final themeProvider = context.read<ThemeProvider>();
-                             themeProvider.toggleTheme(!themeProvider.isDarkMode);
-                          }),
-                        ],
-                      ),
-                      const SizedBox(height: 40),
-                      _buildLogoutButton(context),
-                      const SizedBox(height: 120), // Increased padding
+                      _buildMenuComponents(context, data), // Refactored menus
                     ],
                   ),
                 ),
@@ -126,8 +110,97 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
           );
         },
       ),
+    ),
+   ),
+  );
+ }
+
+ Widget _buildDesktopLayout(BuildContext context, Map<String, dynamic> data) {
+    return Padding(
+      padding: const EdgeInsets.all(40),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Left Column: Profile Card & Stats
+          SizedBox(
+            width: 380,
+            child: Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(30),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.05),
+                    borderRadius: BorderRadius.circular(32),
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                  ),
+                  child: Column(
+                    children: [
+                       Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.cyanAccent, width: 2)),
+                        child: CircleAvatar(
+                          radius: 50,
+                          backgroundImage: NetworkImage(data['photoUrl'] ?? "https://ui-avatars.com/api/?name=${data['name'] ?? 'S'}&background=random&size=128"),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(data['name'] ?? "User", style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+                      Text(data['email'] ?? "email@example.com", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 13)),
+                      const SizedBox(height: 30),
+                      _buildStatsRow(data),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 40),
+          // Right Column: Settings & Menus
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                   _buildMenuComponents(context, data),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
-  }
+ }
+
+ Widget _buildMenuComponents(BuildContext context, Map<String, dynamic> data) {
+    return Column(
+      children: [
+        _buildAnimatedMenuSection(
+          title: "ACCOUNT",
+          delay: 200,
+          items: [
+            _buildMenuItem(Icons.person, "Edit Profile", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const EditProfilePage()))),
+            _buildMenuItem(Icons.wallet, "Wallet", trailing: "GHS ${data['walletBalance'] ?? '0.00'}", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WalletPage()))),
+            _buildMenuItem(Icons.message_outlined, "Messages", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const StudentInboxPage()))),
+            _buildMenuItem(Icons.notifications, "Notifications", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsSettingsPage()))),
+            _buildMenuItem(Icons.headset_mic_outlined, "Help & Support", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HelpPage()))),
+          ],
+        ),
+        const SizedBox(height: 24),
+        _buildAnimatedMenuSection(
+          title: "PREFERENCES",
+          delay: 400,
+          items: [
+            _buildMenuItem(Icons.settings_outlined, "App Settings", onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage()))),
+            _buildMenuItem(Icons.dark_mode, "Theme", onTap: () {
+                final themeProvider = context.read<ThemeProvider>();
+                themeProvider.toggleTheme(!themeProvider.isDarkMode);
+            }),
+          ],
+        ),
+        const SizedBox(height: 40),
+        _buildLogoutButton(context),
+      ],
+    );
+ }
 
   SliverAppBar _buildSliverAppBar(BuildContext context, Map<String, dynamic> data) {
     return SliverAppBar(
@@ -189,6 +262,12 @@ class _ProfilePageState extends State<ProfilePage> with TickerProviderStateMixin
       ),
       actions: [
         IconButton(
+          tooltip: "Log Out",
+          icon: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+          onPressed: () => _handleLogout(context),
+        ),
+        IconButton(
+          tooltip: "Settings",
           icon: const Icon(Icons.settings_outlined, color: Colors.white),
           onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsPage())),
         ),

@@ -167,7 +167,7 @@ class _AgentHostelsPageState extends State<AgentHostelsPage> {
                     decoration: BoxDecoration(
                       color: isDark ? Colors.black.withOpacity(0.8) : Colors.white, // Opaque for better visibility 
                       shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)],
+                      boxShadow: const [BoxShadow(color: Colors.black26, blurRadius: 4)],
                     ),
                     child: Icon(Icons.more_horiz_rounded, size: 22, color: isDark ? Colors.white : Colors.black), // More explicit "Menu" icon
                   ),
@@ -413,7 +413,7 @@ class _AgentHostelsPageState extends State<AgentHostelsPage> {
                           ),
                           Switch(
                             value: isFull,
-                            activeColor: Colors.red,
+                            activeThumbColor: Colors.red,
                             onChanged: (val) async {
                               // Optimistic Update in Modal
                               setModalState(() {}); // Rebuild modal to show switch change? 
@@ -456,7 +456,7 @@ class _AgentHostelsPageState extends State<AgentHostelsPage> {
                       subtitle: const Text("Change name, price, photos..."),
                       onTap: () {
                          Navigator.pop(context);
-                         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Full Edit coming next update!")));
+                         Navigator.push(context, MaterialPageRoute(builder: (_) => AddHostelPage(hostelId: docId, initialData: data)));
                       },
                     ),
                     ListTile(

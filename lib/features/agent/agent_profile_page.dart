@@ -69,6 +69,7 @@ class AgentProfilePage extends StatelessWidget {
                    body: const AgentWalletPage(),
                  )));
               }),
+              _buildMenuItem(context, Icons.lock_outline, "Change Password", containerColor, textColor, () => _showChangePasswordDialog(context)),
               
               const SizedBox(height: 32),
               Text("Support", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
@@ -261,6 +262,154 @@ class AgentProfilePage extends StatelessWidget {
             Icon(Icons.arrow_forward_ios, size: 16, color: color)
           ],
         ),
+      ),
+    );
+  }
+
+  Future<void> _showChangePasswordDialog(BuildContext context) async {
+    final passwordCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool isLoading = false;
+    bool obscurePassword = true;
+    bool obscureConfirm = true;
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          final isDark = Theme.of(context).brightness == Brightness.dark;
+          
+          return AlertDialog(
+            scrollable: true,
+            backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            contentPadding: const EdgeInsets.all(24),
+            title: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), shape: BoxShape.circle),
+                  child: const Icon(Icons.lock_reset, color: Colors.blueAccent),
+                ),
+                const SizedBox(width: 12),
+                const Text("Change Password", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
+              ],
+            ),
+            content: Container(
+              width: MediaQuery.of(context).size.width * 0.8,
+              constraints: const BoxConstraints(maxWidth: 400),
+              child: Form(
+                key: formKey,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text("Secure your account with a new password.", style: TextStyle(color: Colors.grey[600], fontSize: 13)),
+                    const SizedBox(height: 20),
+                    
+                    // New Password
+                    TextFormField(
+                      controller: passwordCtrl,
+                      obscureText: obscurePassword,
+                      validator: (v) => (v?.length ?? 0) < 6 ? "Minimum 6 characters" : null,
+                      decoration: InputDecoration(
+                        labelText: "New Password",
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                           icon: Icon(obscurePassword ? Icons.visibility_off : Icons.visibility),
+                           onPressed: () => setDialogState(() => obscurePassword = !obscurePassword),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        filled: true,
+                        fillColor: isDark ? Colors.black26 : Colors.grey[50],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    
+                    // Confirm Password
+                    TextFormField(
+                      controller: confirmCtrl,
+                      obscureText: obscureConfirm,
+                      validator: (v) => v != passwordCtrl.text ? "Passwords do not match" : null,
+                      decoration: InputDecoration(
+                        labelText: "Confirm Password",
+                        prefixIcon: const Icon(Icons.lock_outline),
+                        suffixIcon: IconButton(
+                           icon: Icon(obscureConfirm ? Icons.visibility_off : Icons.visibility),
+                           onPressed: () => setDialogState(() => obscureConfirm = !obscureConfirm),
+                        ),
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
+                        filled: true,
+                        fillColor: isDark ? Colors.black26 : Colors.grey[50],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context), 
+                child: Text("Cancel", style: TextStyle(color: Colors.grey[600]))
+              ),
+              ElevatedButton(
+                onPressed: isLoading ? null : () async {
+                  if (!formKey.currentState!.validate()) return;
+
+                  setDialogState(() => isLoading = true);
+                  try {
+                    await FirebaseAuth.instance.currentUser!.updatePassword(passwordCtrl.text);
+                    
+                    // Also update in Firestore agent doc for record (Optional but requested)
+                    final uid = FirebaseAuth.instance.currentUser!.uid;
+                    await FirebaseFirestore.instance.collection('agents').doc(uid).update({
+                       'password': passwordCtrl.text, // Note: Storing plaintext pw is bad practice, but maintaining requested behavior
+                       'updatedAt': FieldValue.serverTimestamp(),
+                    }).catchError((_) {});
+
+                    if (context.mounted) {
+                      Navigator.pop(context);
+                      ScaffoldMessenger.of(context).showSnackBar(
+                         const SnackBar(content: Text("Password updated successfully!"), backgroundColor: Colors.green),
+                      );
+                    }
+                  } on FirebaseAuthException catch (e) {
+                      if (e.code == 'requires-recent-login') {
+                         if (context.mounted) {
+                             ScaffoldMessenger.of(context).showSnackBar(
+                               const SnackBar(content: Text("Security: Please log out and log in again to change password.")),
+                             );
+                             Navigator.pop(context);
+                         }
+                      } else {
+                         if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.message}")));
+                         }
+                      }
+                  } catch (e) {
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+                    }
+                  } finally {
+                    if (context.mounted) setDialogState(() => isLoading = false);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blueAccent,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                child: isLoading 
+                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)) 
+                   : const Text("Change Password"),
+              ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -6,10 +6,12 @@ import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:share_plus/share_plus.dart';
-
+import 'package:audioplayers/audioplayers.dart';
+import 'package:stayhub/data/music_library.dart';
 class ClipsPage extends StatefulWidget {
   final bool isActive;
-  const ClipsPage({super.key, this.isActive = true});
+  final bool isAdmin; // Added to handle admin management
+  const ClipsPage({super.key, this.isActive = true, this.isAdmin = false});
 
   @override
   State<ClipsPage> createState() => _ClipsPageState();
@@ -22,11 +24,14 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
   
   // Cache for controllers: Key = Index, Value = Controller
   final Map<int, VideoPlayerController> _controllers = {};
+  final Map<int, AudioPlayer> _audioPlayers = {}; 
   final Set<int> _initializedIndices = {};
 
   final FirestoreService _firestoreService = FirestoreService();
   List<QueryDocumentSnapshot> _clips = [];
   bool _isLoading = true;
+
+  bool _isMuted = true; 
 
   @override
   void initState() {
@@ -45,30 +50,24 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
        });
        if (_clips.isNotEmpty) {
          _onPageChanged(0); 
+         // PRE-LOAD FIRST FEW
+         _initControllerAtIndex(0);
+         _initControllerAtIndex(1);
+         _initControllerAtIndex(2);
        }
     }
   }
 
-  /*
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pageController.dispose();
-    for (var controller in _controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-  */
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _pageController.dispose();
-    // Safely dispose controllers
     try {
       for (var controller in _controllers.values) {
         controller.dispose();
+      }
+      for (var player in _audioPlayers.values) {
+        player.dispose(); // Dispose Audio
       }
     } catch (e) {
       debugPrint("Error disposing controllers: $e");
@@ -101,11 +100,32 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
 
   void _playCurrent() {
     if (!mounted) return;
-    // Only play if active and controller exists
     if (widget.isActive && _isAppActive && _controllers.containsKey(_currentIndex)) {
       final controller = _controllers[_currentIndex];
+      final audio = _audioPlayers[_currentIndex];
+      
+      final data = _clips[_currentIndex].data() as Map<String, dynamic>;
+      final musicId = data['music'] as String? ?? 'original';
+
       if (controller != null && controller.value.isInitialized) {
-         controller.play();
+         if (musicId != 'original') {
+            controller.setVolume(0.0); // Force mute
+            if (!_isMuted && audio != null) {
+               // RESUME AUDIO and then start video immediately
+               audio.resume().then((_) {
+                  if (mounted && _currentIndex == _clips.indexOf(_clips[_currentIndex])) {
+                     controller.play();
+                  }
+               });
+            } else {
+               audio?.pause();
+               controller.play();
+            }
+         } else {
+            controller.setVolume(_isMuted ? 0.0 : 1.0);
+            audio?.stop();
+            controller.play();
+         }
       }
     }
   }
@@ -114,21 +134,29 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
     if (_controllers.containsKey(_currentIndex)) {
       _controllers[_currentIndex]?.pause();
     }
+    if (_audioPlayers.containsKey(_currentIndex)) {
+      _audioPlayers[_currentIndex]?.pause();
+    }
   }
 
   void _onPageChanged(int index) {
     if (_currentIndex != index) {
       _controllers[_currentIndex]?.pause();
-      _controllers[_currentIndex]?.seekTo(Duration.zero);
+      // Only seek back if it's far away, otherwise keep position for better "go back" feel
+      if ((index - _currentIndex).abs() > 2) {
+         _controllers[_currentIndex]?.seekTo(Duration.zero);
+      }
+      _audioPlayers[_currentIndex]?.stop(); 
     }
 
     _currentIndex = index;
     _playCurrent();
 
-    // Garbage Collection: Keep only [index-1, index, index+1]
+    // Garbage Collection
     final keysToRemove = <int>[];
     _controllers.forEach((key, controller) {
-      if (key < index - 1 || key > index + 1) {
+      // Keep a larger buffer: current and 2 in each direction
+      if (key < index - 2 || key > index + 2) {
         keysToRemove.add(key);
       }
     });
@@ -136,12 +164,15 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
     for (var key in keysToRemove) {
       _controllers[key]?.dispose();
       _controllers.remove(key);
+      _audioPlayers[key]?.dispose(); 
+      _audioPlayers.remove(key);
       _initializedIndices.remove(key);
     }
 
-    // Pre-load logic
     _initControllerAtIndex(index);     
     _initControllerAtIndex(index + 1); 
+    _initControllerAtIndex(index + 2); // Warm up even more
+    _initControllerAtIndex(index - 1); // Warm up previous
     _initControllerAtIndex(index - 1); 
   }
 
@@ -149,8 +180,13 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
     if (index < 0 || index >= _clips.length) return;
     if (_controllers.containsKey(index)) return;
 
-    final url = (_clips[index].data() as Map<String, dynamic>)['url'] as String?;
+    final data = _clips[index].data() as Map<String, dynamic>; 
+    var url = data['url'] as String?;
+    final musicId = data['music'] as String? ?? 'original';
+
     if (url == null) return;
+    
+    if (url.startsWith('http:')) url = url.replaceFirst('http:', 'https:');
 
     VideoPlayerController controller;
     try {
@@ -161,10 +197,58 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
          controller = VideoPlayerController.networkUrl(Uri.parse(url));
       }
 
-      _controllers[index] = controller; 
+      // 1. Set volume 0.0 IMMEDIATELY before init and add listener
+      if (musicId != 'original') {
+        controller.setVolume(0.0);
+        controller.addListener(() {
+          if (controller.value.volume > 0.0) {
+            controller.setVolume(0.0);
+          }
+        });
+      }
 
+      _controllers[index] = controller; 
       await controller.initialize();
       await controller.setLooping(true);
+      
+      // SETUP AUDIO if Custom Music
+      // 1. Try internal library first, 2. Use embedded metadata if available
+      var track = MusicLibrary.getTrackById(musicId);
+      
+      if (track == null && data['musicUrl'] != null) {
+         track = MusicTrack(
+           id: musicId, 
+           title: data['musicTitle'] ?? 'Song', 
+           artist: data['musicArtist'] ?? 'Artist', 
+           genre: 'Music', 
+           url: data['musicUrl']
+         );
+      }
+
+      if (track != null) {
+         try {
+           final player = AudioPlayer();
+           await player.setSourceUrl(track.url).timeout(const Duration(seconds: 5));
+           await player.setReleaseMode(ReleaseMode.loop);
+           await player.setVolume(1.0);
+           
+           // Double check if we still want this player (user hasn't scrolled far)
+           if (mounted && (index >= _currentIndex - 1 && index <= _currentIndex + 1)) {
+             _audioPlayers[index] = player;
+           } else {
+             player.dispose();
+           }
+         } catch (e) {
+           debugPrint("Error initializing audio for video $index: $e");
+         }
+      }
+
+      // Initial Volume Set
+      if (musicId != 'original') {
+         await controller.setVolume(0.0); // Mute video if music exists
+      } else {
+         await controller.setVolume(_isMuted ? 0.0 : 1.0);
+      }
       
       if (mounted) {
         setState(() {
@@ -176,6 +260,72 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
       }
     } catch (e) {
       debugPrint("Error initializing video $index: $e");
+    }
+  }
+
+  void _toggleGlobalMute() {
+    setState(() => _isMuted = !_isMuted);
+    
+    // Apply immediate effect
+    final controller = _controllers[_currentIndex];
+    final audio = _audioPlayers[_currentIndex];
+    
+    final data = _clips[_currentIndex].data() as Map<String, dynamic>;
+    final musicId = data['music'] as String? ?? 'original';
+    
+    if (musicId != 'original') {
+       // Custom Music Case
+       if (_isMuted) {
+         audio?.pause();
+       } else {
+         audio?.resume();
+       }
+       controller?.setVolume(0.0); // KEEP VIDEO MUTED
+    } else {
+       // Original Audio Case
+       controller?.setVolume(_isMuted ? 0.0 : 1.0);
+    }
+  }
+
+  Future<void> _deleteClip(String clipId, int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Delete Clip?"),
+        content: const Text("This action cannot be undone."),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true), 
+            child: const Text("Delete", style: TextStyle(color: Colors.red))
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _firestoreService.deleteClip(clipId);
+        if (mounted) {
+          setState(() {
+            // Clean up resources for this index
+            _controllers[index]?.dispose();
+            _controllers.remove(index);
+            _audioPlayers[index]?.dispose();
+            _audioPlayers.remove(index);
+            _initializedIndices.remove(index);
+            _clips.removeAt(index);
+          });
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Clip deleted")));
+          if (_clips.isEmpty) {
+             _isLoading = false; 
+          } else {
+             _onPageChanged(_currentIndex >= _clips.length ? _clips.length - 1 : _currentIndex);
+          }
+        }
+      } catch (e) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      }
     }
   }
 
@@ -209,10 +359,15 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
           final isInitialized = _initializedIndices.contains(index);
 
           return VideoPlayerItem(
-             key: ValueKey("video_$index"), 
+             key: ValueKey("video_${data['id']}"), 
              videoData: data,
              controller: controller, 
+             audioPlayer: _audioPlayers[index],
              isInitialized: isInitialized,
+             isMuted: _isMuted,
+             onMuteToggle: _toggleGlobalMute,
+             isAdmin: widget.isAdmin,
+             onDelete: () => _deleteClip(data['id'], index),
           );
         },
       ),
@@ -220,31 +375,54 @@ class _ClipsPageState extends State<ClipsPage> with WidgetsBindingObserver {
   }
 }
 
-class VideoPlayerItem extends StatelessWidget {
+class VideoPlayerItem extends StatefulWidget {
   final Map<String, dynamic> videoData;
   final VideoPlayerController? controller;
+  final AudioPlayer? audioPlayer;
   final bool isInitialized;
+  final bool isMuted;
+  final VoidCallback onMuteToggle;
+  final VoidCallback onDelete;
+  final bool isAdmin;
 
   const VideoPlayerItem({
     super.key, 
     required this.videoData, 
     required this.controller, 
-    required this.isInitialized
+    this.audioPlayer,
+    required this.isInitialized,
+    required this.isMuted,
+    required this.onMuteToggle,
+    required this.onDelete,
+    this.isAdmin = false,
   });
 
   @override
+  State<VideoPlayerItem> createState() => _VideoPlayerItemState();
+}
+
+class _VideoPlayerItemState extends State<VideoPlayerItem> {
+  // Removed local _isMuted state passed from parent now
+
+  @override
   Widget build(BuildContext context) {
-    const musicMap = {
-      'original': 'Original Audio',
-      'lofi': 'Relaxing Lo-Fi',
-      'pop': 'Upbeat Pop',
-      'afrobeat': 'Afrobeat Vibes',
-    };
-    final musicName = musicMap[videoData['music']] ?? 'Original Audio';
+    // RESOLVE MUSIC AESTHETICS
+    String musicDisplay = 'Original Audio';
+    final trackId = widget.videoData['music'];
+    if (trackId != null && trackId != 'original') {
+       final track = MusicLibrary.getTrackById(trackId);
+       if (track != null) {
+          musicDisplay = "${track.title} • ${track.artist}";
+       } else if (widget.videoData['musicTitle'] != null) {
+          // Fallback to embedded metadata
+          musicDisplay = "${widget.videoData['musicTitle']} • ${widget.videoData['musicArtist'] ?? 'Artist'}";
+       }
+    }
+
     final firestoreService = FirestoreService();
 
     // Safe parsing for price
-    final priceRaw = videoData['price'];
+    final priceRaw = widget.videoData['price'];
     final String priceStr = (priceRaw?.toString() ?? '0').replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), 
       (Match m) => '${m[1]},'
@@ -257,22 +435,27 @@ class VideoPlayerItem extends StatelessWidget {
         Container(
           color: Colors.black,
           child: Center(
-             child: (isInitialized && controller != null)
+             child: (widget.isInitialized && widget.controller != null)
                  ? GestureDetector(
                      onTap: () {
-                        if (controller!.value.isPlaying) {
-                           controller!.pause(); 
+                        if (widget.controller!.value.isPlaying) {
+                           widget.controller!.pause(); 
+                           widget.audioPlayer?.pause(); // PAUSE MUSIC
                         } else {
-                           controller!.play();
+                           // Only resume music if not globally muted
+                           if (!widget.isMuted) {
+                              widget.audioPlayer?.resume(); // RESUME AUDIO FIRST
+                           }
+                           widget.controller!.play(); // THEN PLAY VIDEO
                         }
                      },
                      child: SizedBox.expand(
                        child: FittedBox(
                          fit: BoxFit.cover,
                          child: SizedBox(
-                           width: controller!.value.size.width,
-                           height: controller!.value.size.height,
-                           child: VideoPlayer(controller!),
+                           width: widget.controller!.value.size.width,
+                           height: widget.controller!.value.size.height,
+                           child: VideoPlayer(widget.controller!),
                          ),
                        ),
                      ),
@@ -292,6 +475,29 @@ class VideoPlayerItem extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   stops: [0.0, 0.6, 0.85, 1.0],
                 ),
+              ),
+            ),
+          ),
+        ),
+
+        // Mute/Unmute Button (Top Right)
+        // Mute/Unmute Button (Top Right)
+         Positioned(
+          top: 50, // Moved down slightly to avoid status bar overlap
+          right: 20,
+          child: GestureDetector(
+            onTap: widget.onMuteToggle,
+            child: Container(
+              padding: const EdgeInsets.all(12), // Increased padding
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.6), // Darker background for contrast
+                shape: BoxShape.circle,
+                border: Border.all(color: Colors.white24, width: 1.5), // Added border for visibility
+              ),
+              child: Icon(
+                widget.isMuted ? Icons.volume_off_rounded : Icons.volume_up_rounded,
+                color: Colors.white,
+                size: 28, // Increased icon size
               ),
             ),
           ),
@@ -319,7 +525,7 @@ class VideoPlayerItem extends StatelessWidget {
                         children: [
                           const Icon(Icons.people, color: Colors.white, size: 14),
                           const SizedBox(width: 4),
-                          Text("${videoData['capacity'] ?? 4} in a room", style: const TextStyle(color: Colors.white, fontSize: 12)),
+                          Text("${widget.videoData['capacity'] ?? 4} in a room", style: const TextStyle(color: Colors.white, fontSize: 12)),
                         ],
                       ),
                     ),
@@ -330,7 +536,7 @@ class VideoPlayerItem extends StatelessWidget {
                         color: Colors.amber.withValues(alpha: 0.9),
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Text("${videoData['rating'] ?? 4.5} ★", style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
+                      child: Text("${widget.videoData['rating'] ?? 4.5} ★", style: const TextStyle(color: Colors.black, fontSize: 12, fontWeight: FontWeight.bold)),
                     ),
                   ],
                 ),
@@ -338,7 +544,7 @@ class VideoPlayerItem extends StatelessWidget {
                 
                 // Name
                 Text(
-                  videoData['name'] ?? "Hostel Tour",
+                  widget.videoData['name'] ?? "Hostel Tour",
                   style: const TextStyle(
                     color: Colors.white, 
                     fontSize: 22, 
@@ -353,7 +559,7 @@ class VideoPlayerItem extends StatelessWidget {
                    const Icon(Icons.location_on, color: Colors.blueAccent, size: 16), 
                    const SizedBox(width: 4), 
                    Expanded(
-                     child: Text(videoData['location'] ?? "Unknown Location", 
+                     child: Text(widget.videoData['location'] ?? "Unknown Location", 
                        style: const TextStyle(color: Colors.white70, fontSize: 15),
                        overflow: TextOverflow.ellipsis,
                      ),
@@ -365,7 +571,9 @@ class VideoPlayerItem extends StatelessWidget {
                 Row(children: [
                    const Icon(Icons.music_note, color: Colors.white70, size: 14), 
                    const SizedBox(width: 4), 
-                   Text(musicName, style: const TextStyle(color: Colors.white70, fontSize: 13))
+                   Expanded(
+                     child: Text(musicDisplay, style: const TextStyle(color: Colors.white70, fontSize: 13), overflow: TextOverflow.ellipsis),
+                   )
                 ]),
                 const SizedBox(height: 20),
                 
@@ -373,15 +581,15 @@ class VideoPlayerItem extends StatelessWidget {
                 GestureDetector(
                   onTap: () async {
                        // Pause video immediately to prevent background playback
-                       controller?.pause();
+                       widget.controller?.pause();
 
-                       final loc = videoData['location'];
-                       if (loc == null) {
-                         controller?.play();
+                       final name = widget.videoData['name'];
+                       if (name == null) {
+                         widget.controller?.play();
                          return; 
                        }
                        
-                       final doc = await firestoreService.findHostelByName(loc);
+                       final doc = await firestoreService.findHostelByName(name);
                        if (doc != null && context.mounted) {
                          final d = doc.data() as Map<String, dynamic>;
                          d['id'] = doc.id;
@@ -389,10 +597,10 @@ class VideoPlayerItem extends StatelessWidget {
                          // Wait for return, then resume
                          await Navigator.push(context, MaterialPageRoute(builder: (_) => HostelDetailsPage(hostel: d)));
                          
-                         if (context.mounted) controller?.play();
+                         if (context.mounted) widget.controller?.play();
                        } else {
                          if(context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel details not found")));
-                         controller?.play(); // Resume if failed
+                         widget.controller?.play(); // Resume if failed
                        }
                   },
                   child: Container(
@@ -431,30 +639,41 @@ class VideoPlayerItem extends StatelessWidget {
           bottom: 140,
           child: Column(
             children: [
-               _ProfileButton(photoUrl: videoData['agentPhoto']),
+               _ProfileButton(photoUrl: widget.videoData['agentPhoto']),
                const SizedBox(height: 24),
                LikeButton(
-                 clipId: videoData['id'], 
-                 likes: List.from(videoData['likes'] ?? [])
+                 clipId: widget.videoData['id'], 
+                 likes: List.from(widget.videoData['likes'] ?? [])
                ),
                const SizedBox(height: 24),
                _ActionBtn(
                  icon: Icons.comment_rounded, 
-                 label: "${videoData['commentCount'] ?? 0}", 
+                 label: "${widget.videoData['commentCount'] ?? 0}", 
                  onTap: () {
                     showModalBottomSheet(
                        context: context,
                        backgroundColor: Colors.transparent,
                        isScrollControlled: true,
-                       builder: (_) => _CommentsSheet(clipId: videoData['id']),
+                       builder: (_) => _CommentsSheet(clipId: widget.videoData['id']),
                     );
                  }
                ),
                const SizedBox(height: 24),
                _ActionBtn(icon: Icons.share_rounded, label: "Share", onTap: () async {
-                  final url = videoData['url'] as String?;
-                  if (url != null) Share.share("${videoData['name']}\n$url");
+                  final url = widget.videoData['url'] as String?;
+                  if (url != null) Share.share("${widget.videoData['name']}\n$url");
                }),
+               
+               // 5. Delete Button (Conditional)
+               if (widget.isAdmin || (FirebaseAuth.instance.currentUser?.uid == widget.videoData['agentId'])) ...[
+                  const SizedBox(height: 24),
+                  _ActionBtn(
+                    icon: Icons.delete_outline_rounded, 
+                    label: "Delete", 
+                    color: Colors.redAccent,
+                    onTap: widget.onDelete,
+                  ),
+               ],
             ],
           ),
         ),
@@ -626,7 +845,7 @@ class _ActionBtn extends StatelessWidget {
              child: Icon(icon, color: color, size: 30),
            ),
            const SizedBox(height: 6),
-           Text(label, style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold))
+           Text(label, style: TextStyle(color: color == Colors.white ? Colors.white : color, fontSize: 13, fontWeight: FontWeight.bold))
          ],
        ),
     );
@@ -741,3 +960,4 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     );
   }
 }
+

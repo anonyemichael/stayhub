@@ -71,7 +71,7 @@ class _LocationPickerPageState extends State<LocationPickerPage> {
              right: 40,
              child: Container(
                padding: const EdgeInsets.all(12),
-               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: [BoxShadow(blurRadius: 10, color: Colors.black12)]),
+               decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), boxShadow: const [BoxShadow(blurRadius: 10, color: Colors.black12)]),
                child: const Text("Pan the map to place the pin at the hostel's entrance.", textAlign: TextAlign.center),
              ),
           )

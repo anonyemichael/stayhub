@@ -175,15 +175,15 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
             ],
           ),
 
-          Row(
+          const Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Flexible(
+              Flexible(
                  child: Text("**** BANK", style: TextStyle(color: Colors.white54, letterSpacing: 2), overflow: TextOverflow.ellipsis),
               ),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Row(
-                children: const [
+                children: [
                   Icon(Icons.check_circle, color: Colors.greenAccent, size: 16),
                   SizedBox(width: 4),
                   Text("Direct Deposit", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12)),

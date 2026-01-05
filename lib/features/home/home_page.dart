@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
@@ -10,7 +11,7 @@ import 'package:stayhub/features/home/all_hostels_page.dart';
 import 'package:stayhub/features/home/widgets/advanced_filter_modal.dart';
 import 'package:stayhub/features/home/widgets/hostel_horizontal_card.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:stayhub/features/profile/help_page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -24,17 +25,41 @@ class _HomePageState extends State<HomePage> {
   final TextEditingController _searchController = TextEditingController();
   int _selectedCategoryIndex = 0;
   String _searchQuery = "";
+  String? _userSchool;
   
   // Advanced Filter State
   RangeValues? _priceRange;
   List<String> _filterAmenities = [];
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchUserSchool();
+  }
+
+  Future<void> _fetchUserSchool() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (mounted && doc.exists) {
+          setState(() {
+            _userSchool = doc.data()?['school'];
+          });
+        }
+      } catch (e) {
+        debugPrint("Error fetching user school: $e");
+      }
+    }
+  }
+
   final List<String> _categories = [
     "All",
-    "Near Campus",
+    "My School 🎓",
+    "UENR",
+    "UDS",
     "Affordable",
     "Luxury",
-    "AC Rooms"
   ];
 
   @override
@@ -46,87 +71,99 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
-        slivers: [
-          _buildSliverAppBar(),
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                _buildCategoryList(),
-                const SizedBox(height: 25),
-                
-                // Show Dynamic Layout ONLY if not searching
-                if (_searchQuery.isEmpty) ...[
-                  // 1. Featured Carousel
-                  _buildSectionHeader("Featured Stays 🔥"),
-                  const SizedBox(height: 15),
-                  _buildFeaturedCarousel(),
-                  const SizedBox(height: 30),
-
-                  // 2. Trending / Horizontal List
-                  _buildSectionHeader("Trending Near You"),
-                  const SizedBox(height: 15),
-                  _buildHorizontalList(), 
-                  const SizedBox(height: 30),
-                ],
-
-                // 3. Main Grid / Search Results
-                _buildSectionHeader(
-                  _searchQuery.isEmpty ? "All Hostels" : "Search Results", 
-                  showSeeAll: _searchQuery.isEmpty
+      body: Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 1200),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            slivers: [
+              _buildSliverAppBar(),
+              SliverToBoxAdapter(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _CategoryList(
+                      categories: _categories,
+                      selectedIndex: _selectedCategoryIndex,
+                      onChanged: (index) => setState(() => _selectedCategoryIndex = index),
+                    ),
+                    const SizedBox(height: 25),
+                    
+                    // Show Dynamic Layout ONLY if not searching
+                    if (_searchQuery.isEmpty) ...[
+                      // 1. Featured Carousel
+                      _buildSectionHeader("Featured Stays 🔥"),
+                      const SizedBox(height: 15),
+                      _buildFeaturedCarousel(),
+                      const SizedBox(height: 30),
+    
+                      // 2. Trending / Horizontal List
+                      _buildSectionHeader("Trending Near You"),
+                      const SizedBox(height: 15),
+                      _buildHorizontalList(), 
+                      const SizedBox(height: 30),
+                    ],
+    
+                    // 3. Main Grid / Search Results
+                    _buildSectionHeader(
+                      _searchQuery.isEmpty ? "All Hostels" : "Search Results", 
+                      showSeeAll: _searchQuery.isEmpty
+                    ),
+                    const SizedBox(height: 15),
+                  ],
                 ),
-                const SizedBox(height: 15),
-              ],
-            ),
-          ),
-          
-          // Vertical Grid of Hostels
-          StreamBuilder<QuerySnapshot>(
-            stream: _firestoreService.getHostels(),
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())));
-              }
+              ),
               
-              var docs = snapshot.data?.docs ?? [];
-              docs = _filterHostels(docs);
-
-              if (docs.isEmpty) {
-                return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No hostels found"))));
-              }
-
-              // Responsive Grid - Limit to 20 items for performance
-              final displayDocs = docs.take(20).toList();
-              final screenWidth = MediaQuery.of(context).size.width;
-              final crossAxisCount = screenWidth > 600 ? 3 : 2;
-
-              return SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                sliver: SliverGrid(
-                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: crossAxisCount,
-                    mainAxisSpacing: 14,
-                    crossAxisSpacing: 14,
-                    childAspectRatio: 0.60, // Taller cards to prevent overflow
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (context, index) {
-                      return RepaintBoundary(
-                        child: _buildPopularCard(displayDocs[index].data() as Map<String, dynamic>..['id'] = displayDocs[index].id),
-                      );
-                    },
-                    childCount: displayDocs.length,
-                  ),
-                ),
-              );
-            },
+              // Vertical Grid of Hostels
+              StreamBuilder<QuerySnapshot>(
+                stream: _firestoreService.getHostels(),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())));
+                  }
+                  
+                  var docs = snapshot.data?.docs ?? [];
+                  docs = _filterHostels(docs);
+    
+                  if (docs.isEmpty) {
+                    return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: Text("No hostels found"))));
+                  }
+    
+                  // Responsive Grid
+                  final displayDocs = docs.take(20).toList();
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  // Use width of the constrained box if screen is larger than 1200
+                  final effectiveWidth = screenWidth > 1200 ? 1200 : screenWidth;
+                  // Calculate columns: Aim for card width ~200-250px
+                  final crossAxisCount = (effectiveWidth / 220).floor().clamp(2, 5); 
+    
+                  return SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    sliver: SliverGrid(
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: crossAxisCount,
+                        mainAxisSpacing: 14,
+                        crossAxisSpacing: 14,
+                        childAspectRatio: 0.7, 
+                      ),
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          return RepaintBoundary(
+                            child: _buildPopularCard(displayDocs[index].data() as Map<String, dynamic>..['id'] = displayDocs[index].id),
+                          );
+                        },
+                        childCount: displayDocs.length,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              
+              // Bottom padding
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            ],
           ),
-          
-          // Bottom padding
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
+        ),
       ),
     );
   }
@@ -166,14 +203,26 @@ class _HomePageState extends State<HomePage> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Connecting..."), duration: Duration(seconds: 1)));
     
     try {
-      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
-      final data = doc.data() as Map<String, dynamic>? ?? {};
-      final support = data['student_support'] as Map<String, dynamic>? ?? {};
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'support_${type}';
       
-      String value = "";
-      if (type == 'whatsapp') value = support['whatsapp'] ?? "";
-      if (type == 'email') value = support['email'] ?? "support@stayhub.app";
-      if (type == 'phone') value = support['phone'] ?? support['whatsapp'] ?? ""; // Fallback to whatsapp if phone missing
+      // Try local cache first
+      String value = prefs.getString(cacheKey) ?? "";
+      
+      // Fetch from Firestore in background or if cache empty
+      if (value.isEmpty) {
+        final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
+        final data = doc.data() ?? {};
+        final support = data['student_support'] as Map<String, dynamic>? ?? {};
+        
+        if (type == 'whatsapp') value = support['whatsapp'] ?? "";
+        if (type == 'email') value = support['email'] ?? "support@stayhub.app";
+        if (type == 'phone') value = support['phone'] ?? support['whatsapp'] ?? ""; 
+
+        if (value.isNotEmpty) {
+           await prefs.setString(cacheKey, value);
+        }
+      }
 
       if (value.isEmpty) {
          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Contact info not available"), backgroundColor: Colors.red));
@@ -262,22 +311,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildAppBarHeader() {
-    // Dynamic Greeting
+  String _getGreeting() {
     final now = DateTime.now();
-    String greeting;
     if (now.month == 12 && (now.day >= 24 && now.day <= 26)) {
-      greeting = "Merry Christmas 🎄,";
+      return "Merry Christmas 🎄,";
     } else if ((now.month == 12 && now.day == 31) || (now.month == 1 && now.day == 1)) {
-      greeting = "Happy New Year 🎉,";
+      return "Happy New Year 🎉,";
     } else if (now.month == 2 && now.day == 14) {
-      greeting = "Happy Valentines ❤️,";
+      return "Happy Valentines ❤️,";
     } else {
-       final hour = now.hour;
-       if (hour < 12) greeting = "Good Morning 🌤️,";
-       else if (hour < 17) greeting = "Good Afternoon ☀️,";
-       else greeting = "Good Evening 🌙,";
+      final hour = now.hour;
+      if (hour < 12) return "Good Morning 🌤️,";
+      if (hour < 17) return "Good Afternoon ☀️,";
+      return "Good Evening 🌙,";
     }
+  }
+
+  Widget _buildAppBarHeader() {
+    final greeting = _getGreeting();
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -372,45 +423,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Widget _buildCategoryList() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.only(left: 20),
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: List.generate(_categories.length, (index) {
-          final isSelected = _selectedCategoryIndex == index;
-          return GestureDetector(
-            onTap: () { 
-               setState(() => _selectedCategoryIndex = index);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeOut,
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected ? Theme.of(context).primaryColor : Theme.of(context).cardColor,
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: isSelected 
-                    ? [BoxShadow(color: Theme.of(context).primaryColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))]
-                    : [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 5)],
-                border: isSelected ? null : Border.all(color: Colors.grey.withOpacity(0.1)),
-              ),
-              child: Text(
-                _categories[index], 
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.7), 
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5
-                )
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
+
 
   Widget _buildFeaturedCarousel() {
     return StreamBuilder<QuerySnapshot>(
@@ -420,12 +433,13 @@ class _HomePageState extends State<HomePage> {
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) return const SizedBox.shrink();
 
+        final screenWidth = MediaQuery.of(context).size.width;
         return CarouselSlider(
           options: CarouselOptions(
             height: 220, 
             enlargeCenterPage: true, 
             autoPlay: true,
-            viewportFraction: 0.85,
+            viewportFraction: screenWidth > 900 ? 0.35 : 0.85, 
           ),
           items: docs.map((doc) => _buildFeaturedCard(doc.data() as Map<String, dynamic>..['id'] = doc.id)).toList(),
         );
@@ -444,7 +458,7 @@ class _HomePageState extends State<HomePage> {
             fit: StackFit.expand,
             children: [
               CachedNetworkImage(
-                imageUrl: data['image'] ?? '', 
+                imageUrl: _getSecureUrl(data['image']), 
                 fit: BoxFit.cover,
                 memCacheWidth: 1000,
                 placeholder: (c,u) => Container(color: Colors.grey[200]),
@@ -476,26 +490,47 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHorizontalList() {
-    return SizedBox(
-      height: 280, // Increased height to prevent overflow
-      child: StreamBuilder<QuerySnapshot>(
-        stream: _firestoreService.getHostels(),
-        builder: (context, snapshot) {
-          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-          var docs = snapshot.data?.docs ?? [];
-          docs = docs.take(5).toList();
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestoreService.getHostels(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+        var docs = snapshot.data?.docs ?? [];
+        docs = docs.take(6).toList(); // Show 6 items for grid balance
 
-          if (docs.isEmpty) return const Center(child: Text("No trending hostels"));
+        if (docs.isEmpty) return const SizedBox.shrink();
 
-          return ListView.builder(
-            padding: const EdgeInsets.only(left: 20, right: 10),
-            scrollDirection: Axis.horizontal,
-            physics: const BouncingScrollPhysics(),
-            itemCount: docs.length,
-            itemBuilder: (context, index) => HostelHorizontalCard(data: docs[index].data() as Map<String, dynamic>..['id'] = docs[index].id),
-          );
-        },
-      ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+             final screenWidth = MediaQuery.of(context).size.width;
+             if (screenWidth > 900) {
+                // Desktop: Grid Layout (Creative & Fit)
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Wrap(
+                    spacing: 20,
+                    runSpacing: 20,
+                    alignment: WrapAlignment.start,
+                    children: docs.map((doc) {
+                       return HostelHorizontalCard(data: doc.data() as Map<String, dynamic>..['id'] = doc.id);
+                    }).toList(),
+                  ),
+                );
+             }
+
+             // Mobile: Horizontal List
+             return SizedBox(
+                height: 310,
+                child: ListView.builder(
+                  padding: const EdgeInsets.only(left: 20, right: 10),
+                  scrollDirection: Axis.horizontal,
+                  physics: const BouncingScrollPhysics(),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) => HostelHorizontalCard(data: docs[index].data() as Map<String, dynamic>..['id'] = docs[index].id),
+                ),
+             );
+          }
+        );
+      },
     );
   }
 
@@ -543,23 +578,26 @@ class _HomePageState extends State<HomePage> {
       
       if (category == "All") return true;
 
-      // Smart Filters
-      if (category == "Near Campus") {
+      if (category == "My School 🎓") {
+        if (_userSchool == null) return true; // Show all if no school set (or handle empty) -> lets show all essentially acting like "All" but ideally we should prompt. For now, filter loose.
+        
+        final school = data['school'] as String?;
+        if (school != null && school == _userSchool) return true;
+        
+        // Fallback: Check location string
         final loc = (data['location'] as String? ?? '').toLowerCase();
-        final name = (data['name'] as String? ?? '').toLowerCase();
-        return loc.contains('uenr') || loc.contains('campus') || loc.contains('university') || 
-               loc.contains('sunyani') || loc.contains('fiapre') || loc.contains('notre dame') ||
-               name.contains('uenr') || name.contains('campus');
-      }
-
-      if (category == "Affordable") {
-        final rawPrice = data['price'];
-        double price = 0.0;
-        if (rawPrice is num) price = rawPrice.toDouble();
-        if (rawPrice is String) price = double.tryParse(rawPrice.replaceAll(',', '')) ?? 0.0;
-        return price > 0 && price <= 3000;
+        return loc.contains(_userSchool!.toLowerCase());
       }
       
+      if (category == "UENR" || category == "UDS") {
+         final school = data['school'] as String?;
+         if (school == category) return true;
+         
+         // Fallback
+         final loc = (data['location'] as String? ?? '').toLowerCase();
+         return loc.contains(category.toLowerCase());
+      }
+
       if (category == "Luxury") {
         final rawPrice = data['price'];
         double price = 0.0;
@@ -569,9 +607,19 @@ class _HomePageState extends State<HomePage> {
         bool hasPremium = amenities.contains('AC') && amenities.contains('Fridge');
         return price >= 5000 || hasPremium;
       }
-
-      return (data['amenities'] as List<dynamic>? ?? []).contains(category.replaceAll(' Rooms', ''));
+      
+      // Removed "AC Rooms" explicit category check as it was dynamic, now generally checking amenities
+      return (data['amenities'] as List<dynamic>? ?? []).contains(category);
     }).toList();
+  }
+
+  String _getSecureUrl(String? url) {
+    if (url == null || url.isEmpty) return '';
+    // Force HTTPS
+    if (url.startsWith('http://')) {
+      return url.replaceFirst('http://', 'https://');
+    }
+    return url;
   }
 
   Widget _buildPopularCard(Map<String, dynamic> data) {
@@ -584,6 +632,7 @@ class _HomePageState extends State<HomePage> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor, 
           borderRadius: BorderRadius.circular(16),
+          // ... (rest of decoration)
           boxShadow: [
              BoxShadow(
                color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1), 
@@ -601,15 +650,16 @@ class _HomePageState extends State<HomePage> {
               child: Stack(
                 children: [
                   CachedNetworkImage(
-                    imageUrl: data['image'] ?? '', 
-                    height: 110,
+                    imageUrl: _getSecureUrl(data['image']), 
+                    height: 150,
                     width: double.infinity,
                     fit: BoxFit.cover,
-                    memCacheWidth: 400, // Reduced for performance
+                    memCacheWidth: 400,
                     fadeInDuration: const Duration(milliseconds: 150),
-                    placeholder: (c,u) => Container(height: 110, color: Colors.grey[200]),
-                    errorWidget: (c,u,e) => Container(height: 110, color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                    placeholder: (c,u) => Container(height: 150, color: Colors.grey[200]),
+                    errorWidget: (c,u,e) => Container(height: 150, color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
                   ),
+                  // ... (rest of stack children: Rating, Status, Price)
                   // Rating pill
                   Positioned(
                     top: 6, left: 6,
@@ -701,4 +751,56 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
+class _CategoryList extends StatelessWidget {
+  final List<String> categories;
+  final int selectedIndex;
+  final ValueChanged<int> onChanged;
+
+  const _CategoryList({
+    required this.categories,
+    required this.selectedIndex,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.only(left: 20),
+      physics: const BouncingScrollPhysics(),
+      child: Row(
+        children: List.generate(categories.length, (index) {
+          final isSelected = selectedIndex == index;
+          return GestureDetector(
+            onTap: () => onChanged(index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeOut,
+              margin: const EdgeInsets.only(right: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: isSelected ? Theme.of(context).primaryColor : Theme.of(context).cardColor,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: isSelected 
+                    ? [BoxShadow(color: Theme.of(context).primaryColor.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 5))]
+                    : [BoxShadow(color: Colors.grey.withValues(alpha: 0.05), blurRadius: 5)],
+                border: isSelected ? null : Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+              ),
+              child: Text(
+                categories[index], 
+                style: TextStyle(
+                  color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.7), 
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: 0.5
+                )
+              ),
+            ),
+          );
+        }),
+      ),
+    );
+  }
+}
+
 

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:app_links/app_links.dart';
 import 'package:stayhub/auth/auth_page.dart';
 import 'package:stayhub/core/main_page.dart';
 import 'package:stayhub/features/agent/agent_dashboard.dart';
 import 'package:stayhub/core/onboarding_page.dart';
+import 'package:stayhub/auth/verify_email_page.dart';
+import 'package:stayhub/auth/new_password_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:math' as math;
@@ -27,6 +30,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   late AnimationController _gradientController;
   late Animation<Alignment> _topAlignmentAnimation;
   late Animation<Alignment> _bottomAlignmentAnimation;
+
+  Uri? _pendingDeepLink;
 
   @override
   void initState() {
@@ -68,6 +73,20 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         CurvedAnimation(parent: _mainController, curve: const Interval(0.4, 1.0, curve: Curves.easeIn))
     );
 
+    // 3. Initialize Deep Links and Start App
+    _initAndStart();
+  }
+
+  Future<void> _initAndStart() async {
+    // Check deep links before starting app flow (parallel or sequential)
+    try {
+      final appLinks = AppLinks();
+      _pendingDeepLink = await appLinks.getInitialLink();
+      debugPrint("Deep Link Detected: $_pendingDeepLink");
+    } catch (e) {
+      debugPrint("Deep link error: $e");
+    }
+
     _startApp();
   }
 
@@ -88,20 +107,43 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<Widget> _getDestinationScreen() async {
+    // 0. Check Deep Link FIRST
+    if (_pendingDeepLink != null) {
+      final uri = _pendingDeepLink!;
+      // Check for Password Reset Link
+      // Expected: https://stayhubgh.com/reset-password?mode=resetPassword&oobCode=...
+      if (uri.path.contains('reset-password') || uri.queryParameters.containsKey('oobCode')) {
+        final code = uri.queryParameters['oobCode'];
+        if (code != null) {
+          return NewPasswordPage(code: code, email: uri.queryParameters['email']);
+        }
+      }
+    }
+
     final user = FirebaseAuth.instance.currentUser;
     
     // 1. If user is logged in, check role
     if (user != null) {
       try {
-        final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.uid).get();
+        // Parallelize reload and role checks
+        final results = await Future.wait([
+          user.reload().timeout(const Duration(seconds: 3)).catchError((_) {}),
+          FirebaseFirestore.instance.collection('admins').doc(user.uid).get(),
+          FirebaseFirestore.instance.collection('agents').doc(user.uid).get(),
+        ]);
+
+        if (!user.emailVerified) return const VerifyEmailPage();
+
+        final adminDoc = results[1] as DocumentSnapshot;
         if (adminDoc.exists) return const AgentDashboard(); 
 
-        final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(user.uid).get();
+        final agentDoc = results[2] as DocumentSnapshot;
         if (agentDoc.exists) return const AgentDashboard();
 
         // Default User
         return const MainPage();
       } catch (e) {
+        debugPrint("Auth Flow Error: $e");
         return const AuthPage();
       }
     }
@@ -299,7 +341,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       ),
                     ),
                   ),
-                )
+                ),
               ],
             ),
           );
