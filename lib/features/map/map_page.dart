@@ -26,6 +26,17 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
 
   final LatLng _initialCenter = const LatLng(6.673175, -1.565423);
   bool _locationPermissionGranted = false;
+  String? _userSchool;
+
+  // School Coordinates (Ghana)
+  static final Map<String, LatLng> _schoolCoordinates = {
+    'UENR': const LatLng(7.3456, -2.3451), // Sunyani
+    'CUG': const LatLng(7.3300, -2.3280),   // Fiapre, Sunyani (Catholic University College)
+    'KNUST': const LatLng(6.6745, -1.5716), // Kumasi
+    'UDS': const LatLng(9.4034, -0.8424),   // Tamale
+    'UCC': const LatLng(5.1036, -1.2825),   // Cape Coast
+    'LEGON': const LatLng(5.6508, -0.1870), // UG Legon
+  };
 
   Map<String, dynamic>? _selectedHostel;
   final ScrollController _chipScrollController = ScrollController();
@@ -42,8 +53,29 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _hostelsStream = _firestoreService.getHostels();
+    _fetchUserSchool(); // Fetch current user's school for smart centering
     _checkLocationPermission();
     _loadMapStyle();
+  }
+
+  Future<void> _fetchUserSchool() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (mounted && doc.exists) {
+          setState(() {
+            _userSchool = doc.data()?['school'];
+          });
+          // After fetching school, if permission already granted, maybe re-center?
+          if (_locationPermissionGranted) {
+             _moveCameraToUserLocation();
+          }
+        }
+      } catch (e) {
+        debugPrint("Error fetching user school: $e");
+      }
+    }
   }
 
   Future<void> _loadMapStyle() async {
@@ -99,12 +131,33 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     try {
       final position = await Geolocator.getCurrentPosition();
       if (!mounted) return;
+      
+      // Smart Auto-Center: 
+      // If user is near their school (or we don't know it), use GPS.
+      // If user is far from Sunyani/Tamale/etc but their school is there, center on school.
+      LatLng target = LatLng(position.latitude, position.longitude);
+      
+      if (_userSchool != null && _schoolCoordinates.containsKey(_userSchool!)) {
+         final schoolPos = _schoolCoordinates[_userSchool!]!;
+         // Only center on school if user is more than 50km away (maybe they are checking from home)
+         final distance = Geolocator.distanceBetween(position.latitude, position.longitude, schoolPos.latitude, schoolPos.longitude);
+         if (distance > 50000) {
+            target = schoolPos;
+         }
+      }
+
       _mapController?.animateCamera(
         CameraUpdate.newCameraPosition(
-          CameraPosition(target: LatLng(position.latitude, position.longitude), zoom: 16.0),
+          CameraPosition(target: target, zoom: 14.5),
         ),
       );
     } catch (e) {
+      // Fallback: If GPS fails, center on school
+      if (_userSchool != null && _schoolCoordinates.containsKey(_userSchool!)) {
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLngZoom(_schoolCoordinates[_userSchool!]!, 14),
+        );
+      }
       debugPrint("Location Error: $e");
     }
   }

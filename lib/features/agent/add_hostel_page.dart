@@ -38,7 +38,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
 
   // School Selection
   String? _selectedSchool;
-  final List<String> _schools = ['UENR', 'UDS'];
+  final List<String> _schools = ['UENR', 'CUG', 'UDS'];
 
   // Editing State
   String? _existingCoverUrl;

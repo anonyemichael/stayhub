@@ -23,7 +23,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
   late TextEditingController _phoneController;
   late TextEditingController _emailController;
   String? _selectedSchool;
-  final List<String> _schools = ['UENR', 'UDS'];
+  final List<String> _schools = ['UENR', 'CUG', 'UDS'];
 
   bool _isLoading = true;
   bool _isSaving = false;

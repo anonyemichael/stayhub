@@ -57,6 +57,7 @@ class _HomePageState extends State<HomePage> {
     "All",
     "My School 🎓",
     "UENR",
+    "CUG",
     "UDS",
     "Affordable",
     "Luxury",
@@ -589,7 +590,7 @@ class _HomePageState extends State<HomePage> {
         return loc.contains(_userSchool!.toLowerCase());
       }
       
-      if (category == "UENR" || category == "UDS") {
+      if (category == "UENR" || category == "CUG" || category == "UDS") {
          final school = data['school'] as String?;
          if (school == category) return true;
          

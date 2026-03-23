@@ -44,3 +44,29 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .env
+.env.*
+
+# Node / Firebase
+node_modules/
+functions/node_modules/
+package-lock.json
+
+# Secrets
+service-account-key.json
+google-services.json
+GoogleService-Info.plist
+**/google-services.json
+**/GoogleService-Info.plist
+
+# Build logs / artifacts
+build_log*.txt
+build_error.txt
+*.aab
+*.apk
+
+# Media / temp
+ffmpeg_temp/
+stayhub_commercial.mp4
+stayhub_commercial_footage.webp
+video_thumbnail.png
+remote_config_template.json
