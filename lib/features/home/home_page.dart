@@ -12,6 +12,7 @@ import 'package:stayhub/features/home/widgets/advanced_filter_modal.dart';
 import 'package:stayhub/features/home/widgets/hostel_horizontal_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stayhub/services/app_config_service.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -35,6 +36,25 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _fetchUserSchool();
+    _loadDynamicCategories();
+  }
+
+  Future<void> _loadDynamicCategories() async {
+    try {
+      final config = await AppConfigService().getConfig();
+      final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
+      if (dynSchools.isNotEmpty && mounted) {
+        setState(() {
+          // Keep All, My School, then schools, then Affordable, Luxury
+          _categories.clear();
+          _categories.addAll(["All", "My School 🎓"]);
+          _categories.addAll(dynSchools);
+          _categories.addAll(["Affordable", "Luxury"]);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading categories: $e");
+    }
   }
 
   Future<void> _fetchUserSchool() async {

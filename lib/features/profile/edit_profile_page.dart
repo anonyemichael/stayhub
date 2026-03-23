@@ -6,6 +6,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:stayhub/services/cloudinary_service.dart';
+import 'package:stayhub/services/app_config_service.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -63,6 +64,16 @@ class _EditProfilePageState extends State<EditProfilePage> {
       } else {
         userDoc = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
         _userCollection = 'users';
+      }
+
+      // Fetch dynamic schools if available
+      final config = await AppConfigService().getConfig();
+      final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
+      if (dynSchools.isNotEmpty && mounted) {
+        setState(() {
+          _schools.clear();
+          _schools.addAll(dynSchools);
+        });
       }
 
       if (userDoc.exists && mounted) {

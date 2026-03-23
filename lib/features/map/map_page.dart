@@ -7,7 +7,9 @@ import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/services/firestore_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
+import 'package:stayhub/services/app_config_service.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
@@ -67,13 +69,29 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
           setState(() {
             _userSchool = doc.data()?['school'];
           });
-          // After fetching school, if permission already granted, maybe re-center?
-          if (_locationPermissionGranted) {
-             _moveCameraToUserLocation();
-          }
+        }
+        
+        // Fetch dynamic coordinates
+        final config = await AppConfigService().getConfig();
+        final Map<String, dynamic> dynCoords = config['school_coordinates'] as Map<String, dynamic>? ?? {};
+        if (dynCoords.isNotEmpty && mounted) {
+           setState(() {
+              dynCoords.forEach((key, value) {
+                if (value is Map && value['lat'] != null && value['lng'] != null) {
+                  _schoolCoordinates[key] = LatLng(
+                    (value['lat'] as num).toDouble(), 
+                    (value['lng'] as num).toDouble()
+                  );
+                }
+              });
+           });
+        }
+
+        if (_locationPermissionGranted) {
+           _moveCameraToUserLocation();
         }
       } catch (e) {
-        debugPrint("Error fetching user school: $e");
+        debugPrint("Error fetching user school or coordinates: $e");
       }
     }
   }

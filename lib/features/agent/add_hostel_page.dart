@@ -10,6 +10,7 @@ import 'package:stayhub/features/agent/location_picker_page.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:stayhub/services/payment_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:stayhub/services/app_config_service.dart';
 
 class AddHostelPage extends StatefulWidget {
   final String? hostelId;
@@ -48,8 +49,24 @@ class _AddHostelPageState extends State<AddHostelPage> {
   void initState() {
     super.initState();
     _loadBanks();
+    _loadDynamicSchools();
     if (widget.initialData != null) {
       _loadInitialData();
+    }
+  }
+
+  Future<void> _loadDynamicSchools() async {
+    try {
+      final config = await AppConfigService().getConfig();
+      final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
+      if (dynSchools.isNotEmpty && mounted) {
+        setState(() {
+          _schools.clear();
+          _schools.addAll(dynSchools);
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading schools: $e");
     }
   }
 

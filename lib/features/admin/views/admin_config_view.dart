@@ -266,6 +266,66 @@ class _AdminConfigViewState extends State<AdminConfigView> {
 
               const SizedBox(height: 30),
               
+              // --- SCHOOL MANAGEMENT ---
+              _buildSectionTitle("Dynamic School Management", Colors.green),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: cardColor, 
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: Colors.green.withOpacity(0.3))
+                ),
+                child: StreamBuilder<DocumentSnapshot>(
+                   stream: FirebaseFirestore.instance.collection('config').doc('app_config').snapshots(),
+                   builder: (context, snapshot) {
+                     final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
+                     final schools = List<String>.from(data['available_schools'] ?? ['UENR', 'CUG', 'UDS']);
+                     
+                     return Column(
+                       crossAxisAlignment: CrossAxisAlignment.start,
+                       children: [
+                         Wrap(
+                           spacing: 8,
+                           children: schools.map((s) => Chip(
+                             label: Text(s, style: const TextStyle(fontWeight: FontWeight.bold)),
+                             onDeleted: () async {
+                               schools.remove(s);
+                               await FirebaseFirestore.instance.collection('config').doc('app_config').update({'available_schools': schools});
+                             },
+                             deleteIconColor: Colors.red,
+                           )).toList(),
+                         ),
+                         const SizedBox(height: 16),
+                         Row(
+                           children: [
+                             Expanded(
+                               child: TextField(
+                                 onSubmitted: (val) async {
+                                   if (val.trim().isNotEmpty && !schools.contains(val.trim())) {
+                                     schools.add(val.trim());
+                                     await FirebaseFirestore.instance.collection('config').doc('app_config').update({'available_schools': schools});
+                                   }
+                                 },
+                                 decoration: InputDecoration(
+                                   hintText: "School Name (e.g. KNUST)",
+                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                                 ),
+                               ),
+                             ),
+                           ],
+                         ),
+                         const SizedBox(height: 8),
+                         const Text("Tip: Add the school name first, then coordinates via Firebase if map centering is needed.", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                       ],
+                     );
+                   }
+                )
+              ),
+
+              const SizedBox(height: 30),
+              
               // --- SYSTEM CONTROL ---
               _buildSectionTitle("System Control", Colors.red),
               const SizedBox(height: 12),
