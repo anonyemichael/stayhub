@@ -37,9 +37,23 @@ class PaymentService {
       }
 
       // Force-refresh the token to avoid expiry issues
-      debugPrint('[PaymentService] Refreshing auth token...');
       await user.getIdToken(true);
+      
+      // Diagnostic: Check Auth State with Server
+      try {
+        debugPrint('[PaymentService] Running Diagnostic: pingAuth...');
+        final ping = await _functions.httpsCallable('pingAuth').call();
+        debugPrint('[PaymentService] Diagnostic Result: ${ping.data}');
+        
+        if (ping.data['isAuthenticated'] != true) {
+          debugPrint('[PaymentService] WARNING: Server reports NOT authenticated!');
+        }
+      } catch (e) {
+        debugPrint('[PaymentService] Diagnostic pingAuth FAILED: $e');
+        // Continue anyway, prepareBooking will fail if it's a real auth issue
+      }
 
+      debugPrint('[PaymentService] Calling prepareBooking callable...');
       final result = await _functions.httpsCallable('prepareBooking').call({
         'hostelId': hostelId,
         'roomId': roomId,
@@ -89,6 +103,13 @@ class PaymentService {
 
       // Refresh token
       await user.getIdToken(true);
+      
+      try {
+        final ping = await _functions.httpsCallable('pingAuth').call();
+        debugPrint('[PaymentService] Portal Diagnostic: ${ping.data}');
+      } catch (e) {
+        debugPrint('[PaymentService] Portal Diagnostic FAILED: $e');
+      }
 
       final result = await _functions.httpsCallable('getPaymentPortal').call({
         'lockId': lockId,

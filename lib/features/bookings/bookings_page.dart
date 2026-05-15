@@ -477,11 +477,13 @@ class _TicketCardState extends State<TicketCard> {
                         children: [
                           Text("Total Price", style: TextStyle(color: Colors.grey[500], fontSize: 12)),
                           const SizedBox(height: 4),
-                          Text(
-                            "GHS ${widget.booking.price.toStringAsFixed(0)}", 
-                            style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.blue[200] : Colors.blue.shade900),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              "GHS ${widget.booking.price.toStringAsFixed(0)}", 
+                              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: isDark ? Colors.blue[200] : Colors.blue.shade900),
+                            ),
                           )
                         ],
                       ),

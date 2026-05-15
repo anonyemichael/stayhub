@@ -49,7 +49,6 @@ app.*.map.json
 # Node / Firebase
 node_modules/
 functions/node_modules/
-package-lock.json
 
 # Secrets
 service-account-key.json
