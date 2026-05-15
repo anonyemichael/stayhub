@@ -1,6 +1,6 @@
 /**
  * STAYHUB PRODUCTION PAYMENT ENGINE v3.2
- * Updated: 2026-05-15 (Force redeploy for dependency sync)
+ * Updated: 2026-05-15 (Standardized Auth & Index fix)
  * 
  * Architecture:
  * 1. prepareBooking (Callable): Creates atomic lock and validates availability.
@@ -153,12 +153,12 @@ exports.prepareBooking = functions.https.onCall(async (data, context) => {
     logStep("1_PAYLOAD_RECEIVED", { userId, hostelId, roomId, checkIn, checkOut, idempotencyKey });
 
     if (!userId) {
-      return { 
-        success: false, 
-        status: "ERROR", 
-        errorCode: "UNAUTHENTICATED", 
-        message: "Authentication required. Please sign in again." 
-      };
+      console.error("prepareBooking: UNAUTHENTICATED access attempt", {
+        hasAuth: !!context.auth,
+        token: context.auth ? "EXISTS" : "MISSING",
+        uid: context.auth?.uid
+      });
+      throw new functions.https.HttpsError("unauthenticated", "Authentication required. Server did not receive a valid user identity.");
     }
 
     if (!hostelId || !roomId || !checkIn || !checkOut) {
@@ -340,7 +340,15 @@ exports.getPaymentPortal = functions.runWith({ secrets: [PAYSTACK_SECRET_KEY] })
   }
 
   const { lockId, deviceInfo, studentSex } = data;
-  const userId = context.auth.uid;
+  const userId = context.auth?.uid;
+  if (!userId) {
+    console.error("getPaymentPortal: UNAUTHENTICATED access attempt", {
+      hasContext: !!context,
+      hasAuth: !!context.auth,
+      token: context.auth ? "EXISTS" : "MISSING"
+    });
+    throw new functions.https.HttpsError('unauthenticated', 'User must be logged in. (Server did not receive auth context)');
+  }
 
   console.log(`[getPaymentPortal] Request for Lock: ${lockId}, User: ${userId}`);
 
@@ -997,4 +1005,18 @@ exports.createSubAccount = functions.runWith({ secrets: [PAYSTACK_SECRET_KEY] })
   } catch (e) {
     return res.status(500).json({ status: false, message: e.message });
   }
+});
+
+/**
+ * DIAGNOSTIC: PING AUTH
+ */
+exports.pingAuth = functions.runWith({ secrets: [PAYSTACK_SECRET_KEY] }).https.onCall(async (data, context) => {
+  return {
+    isAuthenticated: !!context.auth,
+    uid: context.auth?.uid || null,
+    email: context.auth?.token?.email || null,
+    serverTime: new Date().toISOString(),
+    authTime: context.auth?.token?.auth_time || null,
+    hasSecret: !!getPaystackSecretKey(),
+  };
 });
