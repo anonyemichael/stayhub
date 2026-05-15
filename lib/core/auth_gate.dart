@@ -5,6 +5,7 @@ import 'package:stayhub/auth/verify_email_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stayhub/core/main_page.dart';
 import 'package:stayhub/auth/auth_page.dart';
+import 'package:stayhub/auth/landing_page.dart';
 import 'package:stayhub/features/agent/agent_dashboard.dart';
 import 'package:stayhub/features/admin/admin_dashboard.dart';
 import 'package:stayhub/core/splash_screen.dart';
@@ -17,9 +18,17 @@ class AuthGate extends StatelessWidget {
     final prefs = await SharedPreferences.getInstance();
     
     try {
+      final user = FirebaseAuth.instance.currentUser;
+      final email = user?.email;
+
       // 1. Check Admin
-      final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(uid).get();
-      if (adminDoc.exists) return 'admin';
+      const superAdmins = ['anonyemichael6@gmail.com', 'admin@stayhub.com'];
+      if (email != null && superAdmins.contains(email)) return 'admin';
+
+      if (email != null) {
+        final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(email).get();
+        if (adminDoc.exists) return 'admin';
+      }
 
       // 2. Check Agent
       final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(uid).get();
@@ -38,9 +47,10 @@ class AuthGate extends StatelessWidget {
         final userData = userDoc.data();
         if (userData != null) {
           if (userData['isBlocked'] == true) return 'blocked';
-          // Check for verification (default to true for legacy users without the field, or force verification if you prefer strict mode. 
-          // Given the request, we should probably enforce it for new users who have isVerified=false)
-          if (userData['isVerified'] == false) return 'unverified';
+          
+          // Force verification if not Google user and not verified in Firestore
+          final isGoogleUser = FirebaseAuth.instance.currentUser?.providerData.any((p) => p.providerId == 'google.com') ?? false;
+          if (!isGoogleUser && userData['isVerified'] == false) return 'unverified';
         }
       }
 
@@ -105,7 +115,7 @@ class AuthGate extends StatelessWidget {
           );
         }
 
-        return const AuthPage();
+        return const LandingPage();
       },
     );
   }

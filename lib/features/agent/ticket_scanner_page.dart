@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'dart:ui';
 
 class TicketScannerPage extends StatefulWidget {
   const TicketScannerPage({super.key});
@@ -26,68 +27,50 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
     
     for (final barcode in barcodes) {
       if (barcode.rawValue != null) {
-        // Assume rawValue is the Booking ID
         _verifyTicket(barcode.rawValue!);
         break; 
       }
     }
   }
 
-  Future<void> _verifyTicket(String bookingId) async {
+  Future<void> _verifyTicket(String rawData) async {
     setState(() => _isProcessing = true);
-    
-    // Pause camera while processing
     controller.stop();
 
     try {
-      // 1. Search for Booking ID across all user collections
-      // Note: In a real app with millions of users, we'd index this differently.
-      // For now, we query collectionGroup 'bookings' where FieldPath.documentId == bookingId
-      // Firestore does not natively support querying by Doc ID in collection groups easily without exact path.
-      // BUT, we can assume the QR code contains the full JSON or we just query by a 'ticketId' field if we had one.
-      // Let's assume the QR Code contains "bookingId|userId" or just "bookingId" and we try to find it.
-      // Easiest Hack: Query collectionGroup('bookings') where 'id' == bookingId (if we stored it).
-      // Wait, we didn't store 'id' field in the document explicitly (it's the doc ID).
-      // Better approach: QR Code contains "userId:bookingId".
+      String bookingId = rawData;
       
-      // Let's assume for now the QR just has the Booking ID.
-      // We will search for it.
-      
-      final querySnapshot = await FirebaseFirestore.instance.collectionGroup('bookings').get();
-      // This is inefficient but works for MVP. Efficient way: QR has path "users/{uid}/bookings/{bid}"
-      
-      DocumentSnapshot? foundDoc;
-      String? foundUserId;
-      
-      for (var doc in querySnapshot.docs) {
-        if (doc.id == bookingId) {
-          foundDoc = doc;
-          foundUserId = doc.reference.parent.parent!.id; // users/{uid}
-          break;
-        }
+      // 1. Secure Parse: STAYHUB|ID|REF
+      if (rawData.startsWith("STAYHUB|")) {
+        final parts = rawData.split("|");
+        if (parts.length >= 2) bookingId = parts[1];
+      } else if (rawData.contains("/")) {
+        // Prevent path traversal attacks or format errors
+        throw Exception("Invalid Security Format");
       }
 
-      if (foundDoc == null) {
+      // 2. Direct Document Fetch
+      final docRef = FirebaseFirestore.instance.collection('bookings').doc(bookingId);
+      final docSnap = await docRef.get();
+      
+      if (!docSnap.exists) {
         _showResultDialog(
-           title: "Invalid Ticket", // Use helper
-           message: "Ticket ID not found in system.",
+           title: "Invalid Ticket",
+           message: "This ticket (ID: $bookingId) does not exist in our secure database.",
            isSuccess: false,
         );
         return;
       }
 
-      // 🔐 SECURITY CHECK: Does this ticket belong to the logged-in Agent?
-      // Assuming 'hostelOwnerId' or similar field exists, OR we check if the Agent ID matches the hostel ID logic.
-      // Based on typical schema: agent.uid == booking.agentId (or similar)
-      
-      final data = foundDoc.data() as Map<String, dynamic>;
-      final String? bookingAgentId = data['agentId']; // Ensure this field exists in your Booking model
+      final data = docSnap.data() as Map<String, dynamic>;
+      final String? bookingAgentId = data['agentId'];
       final String currentAgentId = FirebaseAuth.instance.currentUser?.uid ?? "";
 
+      // 3. Security check: Must be the owner or authorized agent
       if (bookingAgentId != currentAgentId) {
          _showResultDialog(
-           title: "Wrong Hostel",
-           message: "This ticket does not belong to your hostel.\n\nTicket belongs to agent: ${bookingAgentId ?? 'Unknown'}",
+           title: "Unauthorized Access",
+           message: "This ticket belongs to a different hostel operator.",
            isSuccess: false,
            data: data,
          );
@@ -95,52 +78,53 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
       }
 
       final status = data['status'] ?? 'UNKNOWN';
-      final userName = data['userName'] ?? 'Unknown Student';
-      final hostelName = data['hostelName'] ?? 'Unknown Hostel';
-      final studentSex = data['studentSex'] ?? 'N/A';
+      final userName = data['userName'] ?? 'Student';
       
-      // Check Payment & Status
+      // 4. Verification Flow
       if (status == 'CHECKED_IN') {
          _showResultDialog(
-           title: "Already Checked In",
-           message: "$userName is already checked in.",
+           title: "Already Used",
+           message: "$userName has already used this ticket for check-in.",
            isSuccess: true,
            data: data,
-           customIcon: Icons.verified_user, // New param
+           customIcon: Icons.verified_user,
          );
       } else if (status == 'PAID') {
          _showResultDialog(
-           title: "Valid Ticket", 
-           message: "Payment Confirmed. Ready for Check-In.",
+           title: "Verified Ticket", 
+           message: "Payment confirmed. Proceed with physical check-in.",
            isSuccess: true,
-           data: data, // Pass Data
-           showCheckInButton: true, // New logic control
+           data: data,
+           showCheckInButton: true,
            onConfirm: () async {
-             // Mark as Checked In
-             await foundDoc!.reference.update({'status': 'CHECKED_IN'});
+             // Atomic update to prevent double entry
+             await docRef.update({
+               'status': 'CHECKED_IN',
+               'checkInDate': FieldValue.serverTimestamp(),
+             });
              if (mounted) {
-               ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Student Checked In Successfully!"), backgroundColor: Colors.green));
+               ScaffoldMessenger.of(context).showSnackBar(
+                 const SnackBar(content: Text("Student Checked In Successfully!"), backgroundColor: Colors.green)
+               );
              }
            }
          );
-      } else if (status == 'CONFIRMED') {
-        _showResultDialog(
-          title: "Payment Pending",
-          message: "Student has not paid yet.",
-          isSuccess: false,
-          data: data,
-        );
       } else {
-        _showResultDialog(
-          title: "Invalid Status",
-          message: "Current Status: $status",
-          isSuccess: false,
-          data: data,
-        );
+         _showResultDialog(
+           title: "Payment Unverified",
+           message: "This booking is currently: $status. Entry is denied.",
+           isSuccess: false,
+           data: data,
+         );
       }
 
     } catch (e) {
-      _showResultDialog(title: "Error", message: e.toString(), isSuccess: false);
+      debugPrint("Scanner Error: $e");
+      _showResultDialog(
+        title: "Scan Error", 
+        message: "Unable to process ticket. ${e.toString().contains('Invalid Security Format') ? 'Invalid QR code.' : 'System error.'}", 
+        isSuccess: false
+      );
     }
   }
 
@@ -176,7 +160,6 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // 1. Header with Icon
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.symmetric(vertical: 24),
@@ -190,10 +173,10 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            isSuccess ? (showCheckInButton ? "Payment Verified" : "Success") : "Attention",
+                            isSuccess ? (showCheckInButton ? "Payment Verified" : "Valid Status") : "Attention Required",
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 20,
+                              fontSize: 18,
                               fontWeight: FontWeight.bold,
                               letterSpacing: 0.5
                             ),
@@ -201,8 +184,6 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
                         ],
                       ),
                     ),
-                    
-                    // 2. Content Body
                     Padding(
                       padding: const EdgeInsets.all(24.0),
                       child: Column(
@@ -211,45 +192,39 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
                             title,
                             textAlign: TextAlign.center,
                             style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
                               color: Colors.black87,
                             ),
                           ),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: 12),
                           Text(
-                             message,
-                             textAlign: TextAlign.center,
-                             style: TextStyle(color: Colors.grey[600], fontSize: 13),
+                            message,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey[600], fontSize: 14, height: 1.4),
                           ),
-                          const SizedBox(height: 20),
-                          
-                          // Richer Details Section
+                          const SizedBox(height: 24),
                           Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
                               color: Colors.grey[50],
-                              borderRadius: BorderRadius.circular(16),
+                              borderRadius: BorderRadius.circular(20),
                               border: Border.all(color: Colors.grey[200]!)
                             ),
                             child: Column(
                               children: [
-                                _buildInfoRow(Icons.person, "Student", data?['userName'] ?? 'N/A'),
-                                const Divider(),
-                                _buildInfoRow(Icons.wc, "Gender", data?['studentSex'] ?? 'N/A'),
-                                const Divider(),
-                                _buildInfoRow(Icons.hotel, "Hostel", data?['hostelName'] ?? 'N/A'),
-                                const Divider(),
-                                _buildInfoRow(Icons.payment, "Status", data?['status'] ?? 'N/A', 
-                                  color: isSuccess ? Colors.green : Colors.red),
+                                _buildInfoRow(Icons.person_rounded, "Student", data?['userName'] ?? 'N/A'),
+                                const Divider(height: 24),
+                                _buildInfoRow(Icons.hotel_rounded, "Hostel", data?['hostelName'] ?? 'N/A'),
+                                const Divider(height: 24),
+                                _buildInfoRow(Icons.payment_rounded, "Status", data?['status'] ?? 'N/A', 
+                                  color: isSuccess ? Colors.green[700] : Colors.red[700]),
                               ],
                             ),
                           ),
                         ],
                       ),
                     ),
-
-                    // 3. Actions
                     Padding(
                       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
                       child: Row(
@@ -266,7 +241,7 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
                                 side: BorderSide(color: Colors.grey[300]!),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                               ),
-                              child: Text("Close", style: TextStyle(color: Colors.grey[800], fontWeight: FontWeight.bold)),
+                              child: Text("CANCEL", style: TextStyle(color: Colors.grey[800], fontWeight: FontWeight.w900, letterSpacing: 1.2)),
                             ),
                           ),
                           if (showCheckInButton && onConfirm != null) ...[
@@ -280,12 +255,13 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
                                   controller.start();
                                 },
                                 style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2E2AB7), // Primary Brand Color
+                                  backgroundColor: const Color(0xFF2E2AB7),
                                   padding: const EdgeInsets.symmetric(vertical: 16),
-                                  elevation: 4,
+                                  elevation: 8,
+                                  shadowColor: const Color(0xFF2E2AB7).withOpacity(0.4),
                                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                                 ),
-                                child: const Text("CHECK IN", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13)),
+                                child: const Text("CHECK IN", style: TextStyle(fontWeight: FontWeight.w900, color: Colors.white, fontSize: 13, letterSpacing: 1.2)),
                               ),
                             ),
                           ]
@@ -303,51 +279,65 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
   }
 
   Widget _buildInfoRow(IconData icon, String label, String value, {Color? color}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 18, color: Colors.grey[400]),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: Colors.grey[600], fontSize: 14)),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              value, 
-              textAlign: TextAlign.end,
-              style: TextStyle(
-                fontWeight: FontWeight.w600, 
-                color: color ?? Colors.black87,
-                fontSize: 14
-              ),
-            ),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(color: (color ?? Colors.grey[400])!.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+          child: Icon(icon, size: 16, color: color ?? Colors.grey[600]),
+        ),
+        const SizedBox(width: 12),
+        Text(label, style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold)),
+        const Spacer(),
+        Text(
+          value, 
+          style: TextStyle(fontWeight: FontWeight.w800, color: color ?? Colors.black87, fontSize: 13),
+        ),
+      ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Scan Ticket")),
+      extendBodyBehindAppBar: true,
+      appBar: AppBar(
+        title: const Text("Ticket Verification", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: const IconThemeData(color: Colors.white),
+      ),
       body: Stack(
         children: [
           MobileScanner(
             controller: controller,
             onDetect: _handleDetection,
           ),
-          const ScannerOverlay(borderColor: Colors.blue, cutOutSize: 300),
+          const ScannerOverlay(borderColor: Colors.blue, cutOutSize: 280),
           Positioned(
-             bottom: 50,
-             left: 0,
-             right: 0,
-             child: Center(
-               child: Container(
-                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                 color: Colors.black54,
-                 child: const Text("Align QR Code within frame", style: TextStyle(color: Colors.white)),
+             bottom: 80,
+             left: 40,
+             right: 40,
+             child: ClipRRect(
+               borderRadius: BorderRadius.circular(30),
+               child: BackdropFilter(
+                 filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                 child: Container(
+                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                   decoration: BoxDecoration(
+                     color: Colors.black.withOpacity(0.5),
+                     borderRadius: BorderRadius.circular(30),
+                     border: Border.all(color: Colors.white10),
+                   ),
+                   child: const Row(
+                     mainAxisAlignment: MainAxisAlignment.center,
+                     children: [
+                       Icon(Icons.qr_code_scanner, color: Colors.white, size: 20),
+                       SizedBox(width: 12),
+                       Text("Scan Student's Ticket", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
+                     ],
+                   ),
+                 ),
                ),
              ),
           )
@@ -357,7 +347,6 @@ class _TicketScannerPageState extends State<TicketScannerPage> {
   }
 }
 
-// Creative Scanner Overlay with Animation
 class ScannerOverlay extends StatefulWidget {
   final Color borderColor;
   final double cutOutSize;
@@ -413,43 +402,37 @@ class ScannerOverlayPainter extends CustomPainter {
     final rect = Rect.fromLTWH(0, 0, size.width, size.height);
     final cutOutRect = Rect.fromCenter(center: rect.center, width: cutOutSize, height: cutOutSize);
 
-    // 1. Background (Darkened with hole)
-    final bgPaint = Paint()..color = Colors.black.withOpacity(0.6);
+    final bgPaint = Paint()..color = Colors.black.withOpacity(0.7);
     final bgPath = Path()..fillType = PathFillType.evenOdd;
     bgPath.addRect(rect);
-    bgPath.addRRect(RRect.fromRectAndRadius(cutOutRect, const Radius.circular(20)));
+    bgPath.addRRect(RRect.fromRectAndRadius(cutOutRect, const Radius.circular(30)));
     canvas.drawPath(bgPath, bgPaint);
 
-    // 2. Corners
     final borderPaint = Paint()
-      ..color = borderColor
+      ..color = Colors.white
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 4 // Thinner
+      ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
 
-    const cornerLength = 30.0;
-    const r = 20.0; // Corner radius matching cutOut
+    const cornerLength = 40.0;
+    const r = 30.0;
 
     final path = Path();
-    // Top Left
     path.moveTo(cutOutRect.left, cutOutRect.top + cornerLength);
     path.lineTo(cutOutRect.left, cutOutRect.top + r);
     path.quadraticBezierTo(cutOutRect.left, cutOutRect.top, cutOutRect.left + r, cutOutRect.top);
     path.lineTo(cutOutRect.left + cornerLength, cutOutRect.top);
 
-    // Top Right
     path.moveTo(cutOutRect.right - cornerLength, cutOutRect.top);
     path.lineTo(cutOutRect.right - r, cutOutRect.top);
     path.quadraticBezierTo(cutOutRect.right, cutOutRect.top, cutOutRect.right, cutOutRect.top + r);
     path.lineTo(cutOutRect.right, cutOutRect.top + cornerLength);
 
-    // Bottom Right
     path.moveTo(cutOutRect.right, cutOutRect.bottom - cornerLength);
     path.lineTo(cutOutRect.right, cutOutRect.bottom - r);
     path.quadraticBezierTo(cutOutRect.right, cutOutRect.bottom, cutOutRect.right - r, cutOutRect.bottom);
     path.lineTo(cutOutRect.right - cornerLength, cutOutRect.bottom);
 
-    // Bottom Left
     path.moveTo(cutOutRect.left + cornerLength, cutOutRect.bottom);
     path.lineTo(cutOutRect.left + r, cutOutRect.bottom);
     path.quadraticBezierTo(cutOutRect.left, cutOutRect.bottom, cutOutRect.left, cutOutRect.bottom - r);
@@ -457,25 +440,23 @@ class ScannerOverlayPainter extends CustomPainter {
 
     canvas.drawPath(path, borderPaint);
 
-    // 3. Scanning Line (Creative part)
     final scanY = cutOutRect.top + (cutOutRect.height * scanValue);
     final linePaint = Paint()
       ..shader = LinearGradient(
-        colors: [borderColor.withOpacity(0), borderColor, borderColor.withOpacity(0)],
+        colors: [Colors.blue.withOpacity(0), Colors.blue, Colors.blue.withOpacity(0)],
         stops: const [0.0, 0.5, 1.0],
       ).createShader(Rect.fromLTWH(cutOutRect.left, scanY, cutOutRect.width, 4));
     
-    canvas.drawRect(Rect.fromLTWH(cutOutRect.left + 10, scanY, cutOutRect.width - 20, 2), linePaint);
+    canvas.drawRect(Rect.fromLTWH(cutOutRect.left + 20, scanY, cutOutRect.width - 40, 2), linePaint);
     
-    // Glow Effect
     final glowPaint = Paint()
       ..shader = LinearGradient(
         begin: Alignment.topCenter,
         end: Alignment.bottomCenter,
-        colors: [borderColor.withOpacity(0.3), borderColor.withOpacity(0)],
-      ).createShader(Rect.fromLTWH(cutOutRect.left, scanY, cutOutRect.width, 20));
+        colors: [Colors.blue.withOpacity(0.2), Colors.blue.withOpacity(0)],
+      ).createShader(Rect.fromLTWH(cutOutRect.left, scanY, cutOutRect.width, 40));
 
-    canvas.drawRect(Rect.fromLTWH(cutOutRect.left + 10, scanY, cutOutRect.width - 20, 30), glowPaint);
+    canvas.drawRect(Rect.fromLTWH(cutOutRect.left + 20, scanY, cutOutRect.width - 40, 40), glowPaint);
   }
 
   @override

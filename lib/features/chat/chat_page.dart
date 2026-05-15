@@ -7,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:stayhub/services/cloudinary_service.dart';
+import 'package:stayhub/services/firestore_service.dart';
 
 class ChatPage extends StatefulWidget {
   final String chatId;
@@ -28,8 +29,17 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> {
   final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
   final _auth = FirebaseAuth.instance;
+  final _firestoreService = FirestoreService();
   bool _isUploading = false;
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
 
   void _sendMessage({String? text, String? imageUrl}) async {
     final msgText = text?.trim() ?? "";
@@ -42,25 +52,42 @@ class _ChatPageState extends State<ChatPage> {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    await FirebaseFirestore.instance
+    final batch = FirebaseFirestore.instance.batch();
+    
+    final messageRef = FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.chatId)
         .collection('messages')
-        .add({
+        .doc();
+
+    batch.set(messageRef, {
       'text': msgText,
       'imageUrl': imageUrl,
       'type': imageUrl != null ? 'image' : 'text',
       'senderId': user.uid,
       'senderName': user.displayName ?? 'User',
       'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
     });
 
-    // Update last message
-    await FirebaseFirestore.instance.collection('chats').doc(widget.chatId).set({
-      'users': [user.uid, widget.otherUserId],
+    // Update last message and unread count for recipient
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(widget.chatId);
+    batch.update(chatRef, {
       'lastMessage': imageUrl != null ? '📷 Image' : msgText,
       'lastMessageTime': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+      'unreadCount_${widget.otherUserId}': FieldValue.increment(1),
+      'typing_${user.uid}': false,
+    });
+
+    await batch.commit();
+
+    // Send Real-time Notification
+    await _firestoreService.sendChatNotification(
+      recipientId: widget.otherUserId,
+      senderName: user.displayName ?? 'Someone',
+      messageText: imageUrl != null ? 'Sent an image' : msgText,
+      chatId: widget.chatId,
+    );
   }
 
   Future<void> _pickAndSendImage() async {
@@ -91,287 +118,397 @@ class _ChatPageState extends State<ChatPage> {
     if (user == null) return const Scaffold(body: Center(child: Text("Error: Not Logged In")));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
 
     return Scaffold(
-      extendBodyBehindAppBar: true, 
-      backgroundColor: isDark ? const Color(0xFF121212) : const Color(0xFFF5F7FA),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(60),
-        child: ClipRRect(
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-            child: AppBar(
-              automaticallyImplyLeading: !widget.isEmbedded,
-              title: Text(widget.otherUserName, style: TextStyle(color: isDark ? Colors.white : Colors.black, fontWeight: FontWeight.bold)),
-              backgroundColor: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.7),
-              elevation: 0,
-              iconTheme: IconThemeData(color: isDark ? Colors.white : Colors.black),
-              centerTitle: true,
+      backgroundColor: isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        automaticallyImplyLeading: !widget.isEmbedded,
+        elevation: 0,
+        backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+        title: Row(
+          children: [
+            _buildOtherUserAvatar(widget.otherUserId, isDark),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.otherUserName,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  _buildPresenceStatus(widget.otherUserId),
+                ],
+              ),
             ),
-          ),
+          ],
         ),
-      ),
-      body: Stack(
-        children: [
-          // Background Pattern (Optional)
-          Positioned.fill(
-            child: Opacity(
-              opacity: 0.05,
-              child: Image.network("https://www.transparenttextures.com/patterns/cubes.png", repeat: ImageRepeat.repeat),
-            ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.info_outline_rounded),
+            onPressed: () {},
+            color: isDark ? Colors.white70 : Colors.black54,
           ),
-          
-          Column(
-            children: [
-              Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('chats')
-                      .doc(widget.chatId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: true)
-                      .snapshots(),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(widget.chatId)
+                  .collection('messages')
+                  .orderBy('timestamp', descending: true)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
 
-                    final docs = snapshot.data!.docs;
-                    if (docs.isEmpty) {
-                         return Center(
-                             child: Column(
-                               mainAxisAlignment: MainAxisAlignment.center,
-                               children: [
-                                 Icon(Icons.mark_chat_read_outlined, size: 60, color: Colors.grey.withValues(alpha: 0.3)),
-                                 const SizedBox(height: 10),
-                                 Text("Say Hello! 👋", style: TextStyle(color: Colors.grey.withValues(alpha: 0.5), fontSize: 16)),
-                               ],
-                             )
-                         );
+                final docs = snapshot.data!.docs;
+                _markMessagesAsRead(docs, user.uid);
+
+                if (docs.isEmpty) {
+                  return _buildEmptyState();
+                }
+
+                return ListView.builder(
+                  controller: _scrollController,
+                  reverse: true,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    final isMe = data['senderId'] == user.uid;
+                    final time = (data['timestamp'] as Timestamp?)?.toDate();
+                    
+                    bool showDateHeader = false;
+                    if (index == docs.length - 1) {
+                      showDateHeader = true;
+                    } else {
+                      final prevData = docs[index + 1].data() as Map<String, dynamic>;
+                      final prevTime = (prevData['timestamp'] as Timestamp?)?.toDate();
+                      if (time != null && prevTime != null && !_isSameDay(time, prevTime)) {
+                        showDateHeader = true;
+                      }
                     }
 
-                    return ListView.builder(
-                      reverse: true,
-                      padding: const EdgeInsets.only(left: 16, right: 16, top: 100, bottom: 20),
-                      itemCount: docs.length,
-                      itemBuilder: (context, index) {
-                        final data = docs[index].data() as Map<String, dynamic>;
-                        final isMe = data['senderId'] == user.uid;
-                        final time = (data['timestamp'] as Timestamp?)?.toDate();
-                        final type = data['type'] ?? 'text';
-                        final imageUrl = data['imageUrl'];
-                        
-                        // Date Logic
-                        bool showDateHeader = false;
-                        if (index == docs.length - 1) {
-                          showDateHeader = true; // Always show for oldest message
-                        } else {
-                          final prevData = docs[index + 1].data() as Map<String, dynamic>; // Older message
-                          final prevTime = (prevData['timestamp'] as Timestamp?)?.toDate();
-                          if (time != null && prevTime != null && !_isSameDay(time, prevTime)) {
-                            showDateHeader = true;
-                          }
-                        }
-
-                        // Grouping Logic (for bubble shape)
-                        bool isFirstInSequence = false; // Physically top of group (Oldest of sequence)
-                        bool isLastInSequence = false; // Physically bottom of group (Newest of sequence) (Index 0 is newest)
-                        
-                        // Check Next (Index + 1, Older) -> Determine if I am "First"
-                        if (index == docs.length - 1) {
-                           isFirstInSequence = true;
-                        } else {
-                           final prevData = docs[index + 1].data() as Map<String, dynamic>;
-                           if (prevData['senderId'] != data['senderId']) isFirstInSequence = true;
-                           if (showDateHeader) isFirstInSequence = true; // New day breaks sequence
-                        }
-
-                        // Check Previous (Index - 1, Newer) -> Determine if I am "Last"
-                        if (index == 0) {
-                           isLastInSequence = true;
-                        } else {
-                           final nextData = docs[index - 1].data() as Map<String, dynamic>;
-                           if (nextData['senderId'] != data['senderId']) isLastInSequence = true;
-                           // Note: Date header logic for next message doesn't affect MY bottom shape, 
-                           // but if next message HAS a date header, it visually breaks anyway.
-                           // Actually, if index-1 has a date header, it means index-1 is start of new day.
-                           // So index is end of old day.
-                           final nextTime = (nextData['timestamp'] as Timestamp?)?.toDate();
-                           if (nextTime != null && time != null && !_isSameDay(nextTime, time)) isLastInSequence = true; 
-                        }
-
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (showDateHeader && time != null)
-                              Padding(
-                                padding: const EdgeInsets.symmetric(vertical: 24),
-                                child: Text(
-                                  _formatDate(time),
-                                  style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold),
-                                ),
-                              ),
-
-                            Align(
-                              alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  // Avatar for Other User (Only show at bottom of sequence)
-                                  if (!isMe)
-                                    Container(
-                                      width: 28, 
-                                      margin: const EdgeInsets.only(right: 8),
-                                      child: isLastInSequence 
-                                        ? const CircleAvatar(radius: 14, backgroundImage: AssetImage('assets/placeholder_avatar.png'), child: Icon(Icons.person, size: 16)) // Replace with user image if available passing it down
-                                        : const SizedBox.shrink(),
-                                    ),
-                                  
-                                  Flexible(
-                                    child: Container(
-                                      margin: EdgeInsets.only(bottom: isLastInSequence ? 12 : 2),
-                                      padding: type == 'text' ? const EdgeInsets.symmetric(horizontal: 16, vertical: 12) : const EdgeInsets.all(4),
-                                      constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.70),
-                                      decoration: BoxDecoration(
-                                        gradient: isMe 
-                                            ? const LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4F46E5)]) 
-                                            : LinearGradient(colors: isDark ? [const Color(0xFF2D3748), const Color(0xFF2D3748)] : [Colors.white, Colors.white]),
-                                        color: isMe ? null : (isDark ? const Color(0xFF2D3748) : Colors.white),
-                                        borderRadius: BorderRadius.only(
-                                          topLeft: const Radius.circular(18),
-                                          topRight: const Radius.circular(18),
-                                          bottomLeft: isMe ? const Radius.circular(18) : (isLastInSequence ? const Radius.circular(4) : const Radius.circular(18)),
-                                          bottomRight: isMe ? (isLastInSequence ? const Radius.circular(4) : const Radius.circular(18)) : const Radius.circular(18),
-                                        ),
-                                        boxShadow: [
-                                          if (!isMe && isDark) const BoxShadow(color: Colors.transparent) // No shadow for dark mode bubbles
-                                          else BoxShadow(
-                                            color: Colors.black.withOpacity(0.05),
-                                            blurRadius: 5,
-                                            offset: const Offset(0, 2),
-                                          )
-                                        ],
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        mainAxisSize: MainAxisSize.min,
-                                        children: [
-                                          if (type == 'image' && imageUrl != null)
-                                            GestureDetector(
-                                              onTap: () => _showFullImage(context, imageUrl),
-                                              child: ClipRRect(
-                                                borderRadius: BorderRadius.circular(14),
-                                                child: Hero(
-                                                  tag: imageUrl,
-                                                  child: CachedNetworkImage(
-                                                    imageUrl: imageUrl,
-                                                    placeholder: (context, url) => Container(height: 150, width: 150, color: Colors.black12, child: const Center(child: CircularProgressIndicator())),
-                                                    errorWidget: (context, url, err) => const Icon(Icons.broken_image),
-                                                    fit: BoxFit.cover,
-                                                  ),
-                                                ),
-                                              ),
-                                            )
-                                          else
-                                            Text(
-                                              data['text'] ?? '',
-                                              style: TextStyle(
-                                                  color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
-                                                  fontSize: 16,
-                                              ),
-                                            ),
-                                          if (time != null && isLastInSequence) ...[
-                                            const SizedBox(height: 4),
-                                            Align(
-                                              alignment: Alignment.bottomRight,
-                                              child: Text(
-                                                DateFormat('h:mm a').format(time),
-                                                style: TextStyle(
-                                                  fontSize: 10,
-                                                  color: isMe ? Colors.white.withOpacity(0.7) : Colors.grey,
-                                                ),
-                                              ),
-                                            ),
-                                          ]
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                    return Column(
+                      children: [
+                        if (showDateHeader && time != null)
+                          _buildDateHeader(time),
+                        _buildMessageBubble(docs[index], isMe, isDark, primaryColor),
+                      ],
                     );
                   },
-                ),
+                );
+              },
+            ),
+          ),
+          _buildInputArea(isDark, primaryColor, user.uid),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOtherUserAvatar(String userId, bool isDark) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+      builder: (context, snapshot) {
+        String? photoUrl;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          photoUrl = (snapshot.data!.data() as Map<String, dynamic>)['photoUrl'];
+        }
+        return CircleAvatar(
+          radius: 18,
+          backgroundColor: isDark ? Colors.white10 : Colors.grey[200],
+          backgroundImage: photoUrl != null ? CachedNetworkImageProvider(photoUrl) : null,
+          child: photoUrl == null ? const Icon(Icons.person, size: 20) : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildPresenceStatus(String userId) {
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance.collection('users').doc(userId).snapshots(),
+      builder: (context, snapshot) {
+        bool isOnline = false;
+        if (snapshot.hasData && snapshot.data!.exists) {
+          isOnline = (snapshot.data!.data() as Map<String, dynamic>)['isOnline'] == true;
+        }
+        return Row(
+          children: [
+            Container(
+              width: 8, height: 8,
+              decoration: BoxDecoration(
+                color: isOnline ? Colors.green : Colors.grey,
+                shape: BoxShape.circle,
               ),
-              if (_isUploading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  child: LinearProgressIndicator(borderRadius: BorderRadius.circular(10), backgroundColor: Colors.grey.withValues(alpha: 0.2)),
-                ),
-              
-              // INPUT AREA
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, -5))],
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-                ),
-                child: SafeArea(
-                  top: false,
-                  child: Row(
-                    children: [
-                      Container(
-                        decoration: BoxDecoration(color: isDark ? Colors.grey[800] : Colors.grey[100], shape: BoxShape.circle),
-                        child: IconButton(
-                          onPressed: _pickAndSendImage,
-                          icon: Icon(Icons.add_photo_alternate_rounded, color: isDark ? Colors.white70 : Colors.grey[600], size: 22),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextField(
-                          controller: _messageController,
-                          style: TextStyle(color: isDark ? Colors.white : Colors.black),
-                          decoration: InputDecoration(
-                            hintText: "Type a message...",
-                            hintStyle: TextStyle(color: Colors.grey[400]),
-                            filled: true,
-                            fillColor: isDark ? Colors.grey[800] : Colors.grey[50],
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                            isDense: true,
-                          ),
-                          onSubmitted: (val) => _sendMessage(text: val),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      GestureDetector(
-                        onTap: () => _sendMessage(text: _messageController.text),
-                        child: Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: const BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: LinearGradient(colors: [Color(0xFF6366F1), Color(0xFF4F46E5)]),
-                          ),
-                          child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+            ),
+            const SizedBox(width: 4),
+            Text(
+              isOnline ? "Online" : "Offline",
+              style: TextStyle(
+                color: isOnline ? Colors.green : Colors.grey,
+                fontSize: 11,
               ),
-            ],
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: Colors.blueAccent.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.chat_rounded, size: 40, color: Colors.blueAccent),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            "Start the conversation",
+            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Messages are end-to-end encrypted",
+            style: TextStyle(color: Colors.grey[500], fontSize: 13),
           ),
         ],
       ),
     );
+  }
+
+  Widget _buildDateHeader(DateTime date) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: Colors.grey.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            _formatDate(date),
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(QueryDocumentSnapshot doc, bool isMe, bool isDark, Color primaryColor) {
+    final data = doc.data() as Map<String, dynamic>;
+    final type = data['type'] ?? 'text';
+    final text = data['text'] ?? '';
+    final imageUrl = data['imageUrl'];
+    final time = (data['timestamp'] as Timestamp?)?.toDate();
+    final isRead = data['isRead'] == true;
+    final isDeleted = data['isDeleted'] == true;
+
+    if (isDeleted) {
+       return Align(
+         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+         child: Container(
+           margin: const EdgeInsets.symmetric(vertical: 4),
+           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+           decoration: BoxDecoration(
+             color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+             borderRadius: BorderRadius.circular(15),
+           ),
+           child: Text(
+             "Message deleted",
+             style: TextStyle(color: Colors.grey[500], fontSize: 13, fontStyle: FontStyle.italic),
+           ),
+         ),
+       );
+    }
+
+    return Align(
+      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onLongPress: () => _showOptions(context, doc.reference, isMe),
+            child: Container(
+              margin: const EdgeInsets.only(top: 4, bottom: 2),
+              padding: type == 'image' ? const EdgeInsets.all(4) : const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
+              decoration: BoxDecoration(
+                color: isMe 
+                    ? primaryColor 
+                    : (isDark ? const Color(0xFF1E293B) : Colors.white),
+                gradient: isMe 
+                    ? const LinearGradient(
+                        colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      )
+                    : null,
+                borderRadius: BorderRadius.only(
+                  topLeft: const Radius.circular(20),
+                  topRight: const Radius.circular(20),
+                  bottomLeft: Radius.circular(isMe ? 20 : 4),
+                  bottomRight: Radius.circular(isMe ? 4 : 20),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  )
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (type == 'image' && imageUrl != null)
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: CachedNetworkImage(
+                        imageUrl: imageUrl,
+                        placeholder: (context, url) => Container(height: 200, width: 200, color: Colors.grey[200], child: const Center(child: CircularProgressIndicator())),
+                        errorWidget: (context, url, error) => const Icon(Icons.error),
+                      ),
+                    )
+                  else
+                    Text(
+                      text,
+                      style: TextStyle(
+                        color: isMe ? Colors.white : (isDark ? Colors.white : Colors.black87),
+                        fontSize: 15,
+                        height: 1.4,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          if (time != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8, top: 2),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat('h:mm a').format(time),
+                    style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.w500),
+                  ),
+                  if (isMe) ...[
+                    const SizedBox(width: 4),
+                    Icon(
+                      isRead ? Icons.done_all : Icons.done,
+                      size: 14,
+                      color: isRead ? Colors.blueAccent : Colors.grey[400],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInputArea(bool isDark, Color primaryColor, String uid) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F172A) : Colors.white,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, -5),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            onPressed: _pickAndSendImage,
+            icon: Icon(Icons.add_circle_outline_rounded, color: primaryColor, size: 28),
+          ),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: TextField(
+                controller: _messageController,
+                maxLines: 4,
+                minLines: 1,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black, fontSize: 14),
+                decoration: InputDecoration(
+                  hintText: "Type a message...",
+                  hintStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onChanged: (val) {
+                  FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
+                    'typing_$uid': val.isNotEmpty,
+                  });
+                },
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => _sendMessage(text: _messageController.text),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: primaryColor,
+                shape: BoxShape.circle,
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF6366F1), Color(0xFF4F46E5)],
+                ),
+              ),
+              child: const Icon(Icons.send_rounded, color: Colors.white, size: 20),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _markMessagesAsRead(List<QueryDocumentSnapshot> docs, String myUid) {
+    final batch = FirebaseFirestore.instance.batch();
+    bool hasUpdates = false;
+
+    for (var doc in docs) {
+      final data = doc.data() as Map<String, dynamic>;
+      if (data['senderId'] != myUid && data['isRead'] != true) {
+        batch.update(doc.reference, {'isRead': true});
+        hasUpdates = true;
+      }
+    }
+
+    if (hasUpdates) {
+      batch.commit();
+      FirebaseFirestore.instance.collection('chats').doc(widget.chatId).update({
+        'unreadCount_$myUid': 0,
+      });
+    }
   }
 
   bool _isSameDay(DateTime date1, DateTime date2) {
@@ -384,20 +521,44 @@ class _ChatPageState extends State<ChatPage> {
     final yesterday = today.subtract(const Duration(days: 1));
     final dateToCheck = DateTime(date.year, date.month, date.day);
 
-    if (dateToCheck == today) {
-      return "Today";
-    } else if (dateToCheck == yesterday) {
-      return "Yesterday";
-    } else {
-      return DateFormat('MMMM d, y').format(date);
-    }
+    if (dateToCheck == today) return "Today";
+    if (dateToCheck == yesterday) return "Yesterday";
+    return DateFormat('MMMM d, y').format(date);
   }
 
-  void _showFullImage(BuildContext context, String url) {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(backgroundColor: Colors.transparent, iconTheme: const IconThemeData(color: Colors.white)),
-      body: Center(child: CachedNetworkImage(imageUrl: url)),
-    )));
+  void _showOptions(BuildContext context, DocumentReference ref, bool isMe) {
+    if (!isMe) return;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 24),
+            ListTile(
+              leading: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(color: Colors.red.withOpacity(0.1), borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.delete_outline_rounded, color: Colors.red),
+              ),
+              title: const Text("Delete Message", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              onTap: () {
+                Navigator.pop(context);
+                ref.update({'isDeleted': true});
+              },
+            ),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
   }
 }

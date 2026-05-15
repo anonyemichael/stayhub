@@ -23,88 +23,70 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
     if (user == null) return const Center(child: Text("Please log in"));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : Colors.grey[50];
-    final textColor = isDark ? Colors.white : Colors.black87;
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
 
     return Scaffold(
       backgroundColor: bgColor,
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.fromLTRB(20, 130, 20, 100), // Increased top padding to 130 to clear AppBar
+        physics: const BouncingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-             const SizedBox(height: 20),
-            // 1. PREMIUM CREDIT CARD
+            // PREMIUM WALLET CARD
             StreamBuilder<DocumentSnapshot>(
-              stream: _firestoreService.getWalletBalance(user.uid),
+              stream: FirebaseFirestore.instance.collection('agents').doc(user.uid).snapshots(),
               builder: (context, snapshot) {
+                Map<String, dynamic> data = {};
                 double balance = 0.0;
                 if (snapshot.hasData && snapshot.data!.exists) {
-                  final data = snapshot.data!.data() as Map<String, dynamic>;
-                  final rawBal = data['walletBalance']; // Note: field name in FirestoreService might be 'wallet_balance'
-                  // Checking FirestoreService.updateBookingStatus: 'wallet_balance'
-                  // Checking previous code: data['walletBalance']...
-                  // I should probably support both or verify which one used?
-                  // Step 716 code used 'walletBalance'. 
-                  // But FirestoreService Step 610 writes 'wallet_balance'. 
-                  // I'll check both to be safe, defaulting to 0.
+                  data = snapshot.data!.data() as Map<String, dynamic>;
                   final val = data['wallet_balance'] ?? data['walletBalance'];
                   balance = (val is String ? double.tryParse(val) : (val as num?)?.toDouble()) ?? 0.0;
                 }
-                return _buildCreditCard(balance, isDark);
+                return _buildPremiumWalletCard(balance, isDark, data);
               },
             ),
             
-            const SizedBox(height: 16),
+            const SizedBox(height: 32),
 
-            // 1.5. BANK LINK STATUS
-            StreamBuilder<DocumentSnapshot>(
-              stream: _firestoreService.getAgentProfile(user.uid),
-              builder: (context, snapshot) {
-                 bool isLinked = false;
-                 if (snapshot.hasData && snapshot.data!.exists) {
-                    final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                    isLinked = data['is_bank_verified'] == true;
-                 }
-                 return _buildBankLinkTile(isLinked, isDark);
-              },
-            ),
+            // REFINED ACTION (Bank Setup only, since Withdraw is automated)
+            _buildActionRow(context, isDark),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 40),
 
-            // 2. TRANSACTIONS HEADER
+            // RECENT EARNINGS HEADER
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text("Recent Earnings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
-                Icon(Icons.history, color: isDark ? Colors.grey[400] : Colors.grey[400]),
+                Text("Recent Earnings", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: textColor, letterSpacing: -0.5)),
+                Text("See All", style: TextStyle(color: const Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 12)),
               ],
             ),
             const SizedBox(height: 16),
 
-            // 3. TRANSACTIONS LIST
-            Expanded(
-              child: StreamBuilder<QuerySnapshot>(
-                stream: _firestoreService.getUserTransactions(user.uid),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
+            // REAL TRANSACTION LIST
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance.collection('agents').doc(user.uid).collection('transactions').orderBy('date', descending: true).limit(15).snapshots(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: Padding(padding: EdgeInsets.all(40), child: CircularProgressIndicator()));
+                }
 
-                  final docs = snapshot.data?.docs ?? [];
-                  if (docs.isEmpty) return _buildEmptyState(isDark);
+                final docs = snapshot.data?.docs ?? [];
+                if (docs.isEmpty) return _buildEmptyState(isDark);
 
-                  return ListView.separated(
-                    padding: const EdgeInsets.only(bottom: 20),
-                    physics: const BouncingScrollPhysics(),
-                    itemCount: docs.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (context, index) {
-                      return _buildTransactionTile(docs[index].data() as Map<String, dynamic>, isDark);
-                    },
-                  );
-                },
-              ),
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: docs.length,
+                  itemBuilder: (context, index) {
+                    final data = docs[index].data() as Map<String, dynamic>;
+                    return _buildTransactionTile(data, isDark);
+                  },
+                );
+              },
             ),
           ],
         ),
@@ -112,83 +94,87 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
     );
   }
 
-  // --- WIDGET COMPONENTS ---
+  Widget _buildPremiumWalletCard(double balance, bool isDark, Map<String, dynamic> data) {
+    final bankName = data['bank_name'];
+    final accNo = data['account_number'];
+    final isLinked = bankName != null;
 
-  Widget _buildCreditCard(double balance, bool isDark) {
     return Container(
-      height: 220,
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)], // "Moonlit Asteroid"
-          begin: Alignment.topLeft, end: Alignment.bottomRight,
+          colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(color: const Color(0xFF203A43).withOpacity(0.4), blurRadius: 15, offset: const Offset(0, 10)),
-        ],
+        borderRadius: BorderRadius.circular(32),
+        boxShadow: [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.3), blurRadius: 20, offset: const Offset(0, 10))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              // Chip Icon
-              Container(
-                width: 45, height: 30,
-                decoration: BoxDecoration(
-                  color: Colors.amberAccent.withOpacity(0.8),
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.yellowAccent.withOpacity(0.5)),
+              const Text("Available Balance", style: TextStyle(color: Colors.white70, fontSize: 14, fontWeight: FontWeight.w600)),
+              if (isLinked)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.greenAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.link, color: Colors.greenAccent, size: 12),
+                      SizedBox(width: 4),
+                      Text("LINKED", style: TextStyle(color: Colors.greenAccent, fontSize: 8, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                )
+              else
+                Container(
+                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                   decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+                   child: const Text("UNLINKED", style: TextStyle(color: Colors.redAccent, fontSize: 8, fontWeight: FontWeight.bold)),
                 ),
-                child: const Icon(Icons.credit_card, size: 16, color: Colors.black45), 
-              ),
-              const Text("StayHub Earnings", style: TextStyle(color: Colors.white54, fontStyle: FontStyle.italic)),
             ],
           ),
-
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Row(
-                children: [
-                  const Text("Total Earnings", style: TextStyle(color: Colors.white60, fontSize: 12)),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(color: Colors.green.withOpacity(0.2), borderRadius: BorderRadius.circular(4)),
-                    child: const Text("AUTO-PAID", style: TextStyle(color: Colors.greenAccent, fontSize: 9, fontWeight: FontWeight.bold)),
-                  )
-                ],
-              ),
-              const SizedBox(height: 4),
-              FittedBox(
-                fit: BoxFit.scaleDown,
+              Expanded(
                 child: Text(
                   _currencyFormat.format(balance),
-                  style: const TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold, letterSpacing: 1.5),
+                  style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900, letterSpacing: -1),
                 ),
               ),
+              if (balance > 0)
+                TextButton(
+                  onPressed: () => _showWithdrawDialog(context, balance, data),
+                  style: TextButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF2563EB),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text("WITHDRAW", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
+                ),
             ],
           ),
-
-          const Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          if (isLinked) ...[
+            const SizedBox(height: 12),
+            Text("Payout: $bankName ($accNo)", style: const TextStyle(color: Colors.white60, fontSize: 10, fontWeight: FontWeight.bold)),
+          ] else ...[
+            const SizedBox(height: 12),
+            const Text("Automated direct payouts pending setup.", style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+          ],
+          const SizedBox(height: 32),
+          Row(
             children: [
-              Flexible(
-                 child: Text("**** BANK", style: TextStyle(color: Colors.white54, letterSpacing: 2), overflow: TextOverflow.ellipsis),
-              ),
-              SizedBox(width: 8),
-              Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.greenAccent, size: 16),
-                  SizedBox(width: 4),
-                  Text("Direct Deposit", style: TextStyle(color: Colors.greenAccent, fontWeight: FontWeight.bold, fontSize: 12)),
-                ],
-              )
+              _buildCardMiniStat("Earnings", "+12%", Colors.greenAccent),
+              const SizedBox(width: 24),
+              _buildCardMiniStat("Type", (data['partnerType'] ?? 'Agent').toUpperCase(), Colors.white),
             ],
           ),
         ],
@@ -196,50 +182,117 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
     );
   }
 
-  Widget _buildBankLinkTile(bool isLinked, bool isDark) {
-    if (isLinked) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        decoration: BoxDecoration(
-          color: Colors.green.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.green.withOpacity(0.3)),
-        ),
-        child: const Row(
-          children: [
-            Icon(Icons.check_circle, color: Colors.green),
-            SizedBox(width: 10),
-            Expanded(child: Text("Bank Account Active on Paystack", style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold))),
-          ],
-        ),
+  void _showWithdrawDialog(BuildContext context, double balance, Map<String, dynamic> data) {
+    if (data['bank_name'] == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please link your bank account first.")),
       );
+      Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentBankPage()));
+      return;
     }
 
+    final amountController = TextEditingController(text: balance.toStringAsFixed(2));
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Withdraw Funds", style: TextStyle(fontWeight: FontWeight.w900)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text("Amount to withdraw (GHS):", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 8),
+            TextField(
+              controller: amountController,
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              autofocus: true,
+              style: const TextStyle(fontWeight: FontWeight.bold),
+              decoration: InputDecoration(
+                prefixText: "GHS ",
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text("Will be sent to: ${data['bank_name']}", style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
+            Text("A/C: ${data['account_number']}", style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          ElevatedButton(
+            onPressed: () async {
+              final amt = double.tryParse(amountController.text);
+              if (amt == null || amt <= 0 || amt > balance) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Invalid amount")));
+                return;
+              }
+              Navigator.pop(context);
+              try {
+                await _firestoreService.requestPayout(
+                  uid: _auth.currentUser!.uid,
+                  amount: amt,
+                  bankName: data['bank_name'],
+                  accountNumber: data['account_number'],
+                  businessName: data['business_name'],
+                );
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Withdrawal request submitted!"), backgroundColor: Colors.green));
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Request failed: $e")));
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), foregroundColor: Colors.white),
+            child: const Text("CONFIRM"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCardMiniStat(String label, String value, Color color) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
+        Text(value, style: TextStyle(color: color, fontSize: 14, fontWeight: FontWeight.w900)),
+      ],
+    );
+  }
+
+  Widget _buildActionRow(BuildContext context, bool isDark) {
     return InkWell(
-      onTap: () {
-        Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentBankPage()));
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentBankPage())),
+      borderRadius: BorderRadius.circular(20),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 24),
         decoration: BoxDecoration(
-          color: Colors.orange.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.orange.withOpacity(0.3)),
+          color: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.2)),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10, offset: const Offset(0, 4))],
         ),
         child: Row(
           children: [
-            const Icon(Icons.warning_amber_rounded, color: Colors.orange),
-            const SizedBox(width: 10),
-            Expanded(
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: const Color(0xFF2563EB).withOpacity(0.1), shape: BoxShape.circle),
+              child: const Icon(Icons.account_balance_rounded, color: Color(0xFF2563EB), size: 22),
+            ),
+            const SizedBox(width: 20),
+            const Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text("Connect Bank Account", style: TextStyle(color: Colors.orange, fontWeight: FontWeight.bold)),
-                  Text("Link now to receive payments instantly.", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[700], fontSize: 12)),
+                  Text("Payout Configuration", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14)),
+                  Text("Manage linked bank and MoMo details", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.orange),
+            const Icon(Icons.chevron_right_rounded, color: Colors.grey),
           ],
         ),
       ),
@@ -247,60 +300,49 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
   }
 
   Widget _buildTransactionTile(Map<String, dynamic> data, bool isDark) {
-    // Logic for display
-    final isExpense = data['type'] == 'payout' || data['type'] == 'expense';
-    final rawAmt = data['amount'];
-    final amount = (rawAmt is String ? double.tryParse(rawAmt) : (rawAmt as num?)?.toDouble()) ?? 0.0;
+    final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
     final date = (data['date'] as Timestamp?)?.toDate() ?? DateTime.now();
-    final status = data['status'] ?? 'completed';
-    // Payouts are now "Credits" to the agent's actual bank, so we treat them as Income records primarily.
-    // If we have 'type': 'credit', it's income.
-    
-    // Formatting date
-    final dateString = DateFormat('MMM d, h:mm a').format(date);
-    
-    final tileColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final titleColor = isDark ? Colors.white : Colors.black87;
+    final type = data['type'] ?? 'credit';
+    final isCredit = type == 'credit';
 
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: tileColor,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(isDark ? 0.3 : 0.05), blurRadius: 10, offset: const Offset(0, 2))],
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.01), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
-          // Icon Box
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(12),
+              color: (isCredit ? Colors.green : Colors.red).withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.south_west, color: Colors.green), // Always incoming for earnings
+            child: Icon(
+              isCredit ? Icons.arrow_downward_rounded : Icons.arrow_upward_rounded,
+              color: isCredit ? Colors.green : Colors.red,
+              size: 18,
+            ),
           ),
           const SizedBox(width: 16),
-
-          // Texts
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(data['description'] ?? 'Earning', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: titleColor)),
-                const SizedBox(height: 4),
-                Text(dateString, style: TextStyle(color: Colors.grey[500], fontSize: 12)),
+                Text(data['description'] ?? 'Revenue Share', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                Text(DateFormat('MMM dd, yyyy • hh:mm a').format(date), style: TextStyle(color: Colors.grey[500], fontSize: 11, fontWeight: FontWeight.w600)),
               ],
             ),
           ),
-
-          // Amount
           Text(
-            "+ ${_currencyFormat.format(amount)}",
+            "${isCredit ? '+' : '-'} ${_currencyFormat.format(amount)}",
             style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: Colors.green[700]
+              color: isCredit ? const Color(0xFF10B981) : Colors.redAccent,
+              fontWeight: FontWeight.w900,
+              fontSize: 14,
             ),
           ),
         ],
@@ -310,13 +352,15 @@ class _AgentWalletPageState extends State<AgentWalletPage> {
 
   Widget _buildEmptyState(bool isDark) {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.account_balance_wallet, size: 60, color: isDark ? Colors.grey[700] : Colors.grey[300]),
-          const SizedBox(height: 10),
-          Text("No earnings yet", style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[400])),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          children: [
+            Icon(Icons.account_balance_wallet_outlined, size: 60, color: isDark ? Colors.white12 : Colors.grey[200]),
+            const SizedBox(height: 16),
+            const Text("No earnings recorded yet.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600)),
+          ],
+        ),
       ),
     );
   }

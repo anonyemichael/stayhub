@@ -1,10 +1,27 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // COMPLETE AND RESTORED FIRESTORE SERVICE
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+
+  // --- UNIQUE ID GENERATORS ---
+  
+  String generateBookingId() {
+    final now = DateTime.now();
+    final year = now.year.toString();
+    // Use milliseconds + a random 4-digit suffix for global uniqueness
+    final timeComponent = (now.millisecondsSinceEpoch % 1000000).toString().padLeft(6, '0');
+    final randomSuffix = (1000 + (DateTime.now().microsecondsSinceEpoch % 9000)).toString();
+    return "BK-$year-$timeComponent$randomSuffix";
+  }
+
+  String generateTransactionRef() {
+    return "TX-${DateTime.now().millisecondsSinceEpoch}";
+  }
 
   // ===========================================================================
   // 1. USER & AGENT & ADMIN PROFILES
@@ -18,8 +35,8 @@ class FirestoreService {
     return _db.collection('agents').doc(uid).snapshots();
   }
 
-  Stream<DocumentSnapshot> getAdminProfile(String uid) {
-    return _db.collection('admins').doc(uid).snapshots();
+  Stream<DocumentSnapshot> getAdminProfile(String email) {
+    return _db.collection('admins').doc(email).snapshots();
   }
 
   // Config
@@ -65,12 +82,22 @@ class FirestoreService {
   // 2. HOSTELS
   // ===========================================================================
 
-  Stream<QuerySnapshot> getHostels() {
-    return _db.collection('hostels').snapshots();
+  Stream<QuerySnapshot> getHostels({int? limit}) {
+    Query query = _db.collection('hostels');
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
   }
 
-  Stream<QuerySnapshot> getFeaturedHostels() {
-    return _db.collection('hostels').where('isFeatured', isEqualTo: true).snapshots();
+  Stream<QuerySnapshot> getFeaturedHostels({int? limit}) {
+    Query query = _db.collection('hostels').where('isFeatured', isEqualTo: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
+  }
+
+  Stream<QuerySnapshot> getTrendingHostels({int? limit}) {
+    Query query = _db.collection('hostels').orderBy('rating', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
   }
 
   Stream<QuerySnapshot> getAgentHostels(String agentId) {
@@ -79,8 +106,9 @@ class FirestoreService {
       .snapshots();
 }
 
-  Future<void> addHostel(Map<String, dynamic> hostelData) async {
-    await _db.collection('hostels').add(hostelData);
+  Future<String> addHostel(Map<String, dynamic> hostelData) async {
+    final docRef = await _db.collection('hostels').add(hostelData);
+    return docRef.id;
   }
 
   Future<void> updateHostel(String docId, Map<String, dynamic> data) async {
@@ -88,8 +116,25 @@ class FirestoreService {
   }
 
   Future<DocumentSnapshot?> findHostelByName(String name) async {
-    final query = await _db.collection('hostels').where('name', isEqualTo: name).limit(1).get();
-    if (query.docs.isNotEmpty) return query.docs.first;
+    // Try exact match first
+    final exactQuery = await _db.collection('hostels').where('name', isEqualTo: name).limit(1).get();
+    if (exactQuery.docs.isNotEmpty) return exactQuery.docs.first;
+
+    // Try aggressive word match (fallback)
+    final allHostels = await _db.collection('hostels').get();
+    final searchWords = name.toLowerCase().split(' ').where((w) => w.length > 2).toList();
+    
+    for (var doc in allHostels.docs) {
+      final hostelName = (doc.data()['name'] ?? "").toString().toLowerCase();
+      // Case-insensitive exact or partial
+      if (hostelName == name.toLowerCase() || hostelName.contains(name.toLowerCase())) {
+        return doc;
+      }
+      // Word overlap
+      for (var word in searchWords) {
+        if (hostelName.contains(word)) return doc;
+      }
+    }
     return null;
   }
 
@@ -97,8 +142,14 @@ class FirestoreService {
   // 3. CLIPS
   // ===========================================================================
 
-  Stream<QuerySnapshot> getClips() {
-    return _db.collection('clips').snapshots();
+  Stream<QuerySnapshot> getClips({int? limit}) {
+    Query query = _db.collection('clips').orderBy('timestamp', descending: true);
+    if (limit != null) query = query.limit(limit);
+    return query.snapshots();
+  }
+
+  Stream<DocumentSnapshot> getClip(String clipId) {
+    return _db.collection('clips').doc(clipId).snapshots();
   }
 
   Future<void> toggleClipLike(String uid, String clipId, bool isLiked) async {
@@ -115,13 +166,21 @@ class FirestoreService {
   }
 
   Future<void> addClipComment(String uid, String clipId, String text, String userName, String? userPhoto) async {
-    await _db.collection('clips').doc(clipId).collection('comments').add({
+    final batch = _db.batch();
+    
+    final commentRef = _db.collection('clips').doc(clipId).collection('comments').doc();
+    batch.set(commentRef, {
       'uid': uid,
       'text': text,
       'userName': userName,
       'userPhoto': userPhoto,
       'timestamp': FieldValue.serverTimestamp(),
     });
+
+    final clipRef = _db.collection('clips').doc(clipId);
+    batch.update(clipRef, {'commentCount': FieldValue.increment(1)});
+
+    await batch.commit();
   }
 
   Stream<QuerySnapshot> getClipComments(String clipId) {
@@ -145,34 +204,57 @@ class FirestoreService {
   }
 
   Future<void> addBooking(String uid, Map<String, dynamic> bookingData) async {
-    final bookingRef = await _db.collection('users').doc(uid).collection('bookings').add(bookingData);
+    final bookingId = generateBookingId();
+    bookingData['bookingId'] = bookingId;
+    bookingData['createdAt'] = FieldValue.serverTimestamp();
     
-    // Notify Agent
-    final agentId = bookingData['agentId'];
-    if (agentId != null) {
-      await createNotification(
-        agentId, 
-        "New Booking Request! 🏠", 
-        "You have a new booking for ${bookingData['hostelName'] ?? 'a property'}. Check Bookings to verify."
-      );
+    // 1. Save to User's private bookings
+    await _db.collection('users').doc(uid).collection('bookings').doc(bookingId).set(bookingData);
+    
+    // 2. Save to global 'bookings' collection for Admin/Traceability
+    await _db.collection('bookings').doc(bookingId).set(bookingData);
+
+    // 3. Notify the Agent
+    final agentId = bookingData['agentId']?.toString();
+    if (agentId != null && agentId.isNotEmpty) {
+      await _db.collection('users').doc(agentId).collection('notifications').add({
+        'title': 'New Booking Request! 🏠',
+        'body': '${bookingData['userName']} has requested a room at ${bookingData['hostelName']}.',
+        'type': 'BOOKING_REQUEST',
+        'bookingId': bookingId,
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+      });
     }
-    
-    // Notify Admin (Optional, for oversight)
-    // await createNotification('admin_uid', "New Booking", "User $uid booked ${bookingData['hostelName']}");
   }
 
   // Used by Agents to Approve/Reject bookings
+  /// Finds a booking by its payment reference
+  Future<Map<String, dynamic>?> findBookingByReference(String reference) async {
+    final snapshot = await _db.collection('bookings')
+        .where('paymentReference', isEqualTo: reference)
+        .limit(1)
+        .get();
+    
+    if (snapshot.docs.isNotEmpty) {
+      final data = snapshot.docs.first.data();
+      data['id'] = snapshot.docs.first.id;
+      return data;
+    }
+    return null;
+  }
+
   Future<void> updateBookingStatus(String userId, String bookingId, String status) async {
-    final bookingRef = _db.collection('users').doc(userId).collection('bookings').doc(bookingId);
+    final userBookingRef = _db.collection('users').doc(userId).collection('bookings').doc(bookingId);
+    final globalBookingRef = _db.collection('bookings').doc(bookingId);
     
     await _db.runTransaction((transaction) async {
-       final bookingSnapshot = await transaction.get(bookingRef);
+       final bookingSnapshot = await transaction.get(globalBookingRef);
        if (!bookingSnapshot.exists) return;
 
-       transaction.update(bookingRef, {'status': status});
+       transaction.set(userBookingRef, {'status': status, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
+       transaction.set(globalBookingRef, {'status': status, 'updatedAt': FieldValue.serverTimestamp()}, SetOptions(merge: true));
        
-       // Handle Commission / Payout only when PAID
-       // Fixed Logic: Wallet increments only when Student actually pays.
        if (status == 'PAID') {
           final data = bookingSnapshot.data() as Map<String, dynamic>;
           final agentId = data['agentId'];
@@ -186,25 +268,70 @@ class FirestoreService {
                'wallet_balance': FieldValue.increment(agentEarnings)
              });
              
-             // 2. Add Transaction Record
-             final pendingTxnRef = _db.collection('agents').doc(agentId).collection('transactions').doc();
-             transaction.set(pendingTxnRef, {
+             // 2. Add Transaction Record to Agent
+             final agentTxnRef = _db.collection('agents').doc(agentId).collection('transactions').doc();
+             transaction.set(agentTxnRef, {
                'amount': agentEarnings,
                'type': 'credit',
-               'description': 'Booking Revenue: ${data['hostelName']}',
+               'description': 'Commission: ${data['hostelName']} ($bookingId)',
                'date': FieldValue.serverTimestamp(),
                'bookingId': bookingId,
+               'status': 'completed'
              });
           }
        }
     });
     
     // Create a notification for the user
-    String notifBody = "Your booking was updated to: $status";
-    if (status == 'CONFIRMED') notifBody = "Your booking has been APPROVED! You can now proceed to payment.";
-    if (status == 'PAID') notifBody = "Payment received! Your booking is confirmed.";
+    String notifTitle = "Booking Update";
+    String notifBody = "Your booking ($bookingId) status is now: $status";
+    
+    if (status == 'CONFIRMED') {
+      notifTitle = "Booking Approved! 🚀";
+      notifBody = "Your booking for ${bookingId} is approved! Please make your payment now to secure your room.";
+    } else if (status == 'PAID') {
+      notifTitle = "Payment Confirmed! ✅";
+      notifBody = "We've received your payment for $bookingId. Your stay is officially confirmed!";
+    }
 
-    await createNotification(userId, "Booking Update", notifBody);
+    await createNotification(userId, notifTitle, notifBody, type: 'booking');
+  }
+
+  Future<void> recordPayment({
+    required String bookingId,
+    required String userId,
+    required String reference,
+    required double amount,
+    required String status,
+    Map<String, dynamic>? metadata,
+  }) async {
+    final txnId = reference; // Use Paystack reference as unique ID
+    final txnData = {
+      'transactionId': txnId,
+      'bookingId': bookingId,
+      'userId': userId,
+      'reference': reference,
+      'amount': amount,
+      'status': status, // 'success', 'failed'
+      'timestamp': FieldValue.serverTimestamp(),
+      'metadata': metadata,
+    };
+
+    // 1. Save to global transactions for Admin
+    await _db.collection('transactions').doc(txnId).set(txnData);
+
+    // 2. Link to user
+    await _db.collection('users').doc(userId).collection('transactions').doc(txnId).set(txnData);
+
+    // 3. Update Booking Status and link reference if successful
+    if (status == 'success') {
+      await _db.collection('bookings').doc(bookingId).update({
+        'status': 'PAID',
+        'paymentReference': reference,
+        'paidAt': FieldValue.serverTimestamp(),
+      });
+      await updateBookingStatus(userId, bookingId, 'PAID');
+    }
   }
 
   // ===========================================================================
@@ -243,14 +370,56 @@ class FirestoreService {
     return _db.collection('users').doc(uid).collection('transactions').orderBy('date', descending: true).snapshots();
   }
 
-  Future<void> requestPayout(String uid, double amount, String method, String details) async {
-    await _db.collection('payouts').add({
-      'agentId': uid,
-      'amount': amount,
-      'method': method,
-      'details': details,
-      'status': 'pending',
-      'timestamp': FieldValue.serverTimestamp(),
+  Future<void> requestPayout({
+    required String uid, 
+    required double amount, 
+    required String bankName, 
+    required String accountNumber,
+    String? businessName,
+  }) async {
+    final agentRef = _db.collection('agents').doc(uid);
+    final payoutRef = _db.collection('payouts').doc();
+    final transactionRef = agentRef.collection('transactions').doc();
+
+    await _db.runTransaction((transaction) async {
+      final agentSnap = await transaction.get(agentRef);
+      if (!agentSnap.exists) throw Exception("Agent profile not found");
+
+      final data = agentSnap.data() as Map<String, dynamic>;
+      final currentBalance = (data['wallet_balance'] as num?)?.toDouble() ?? 0.0;
+
+      if (currentBalance < amount) {
+        throw Exception("Insufficient balance. Available: GHS $currentBalance");
+      }
+
+      // 1. Decrement Balance
+      transaction.update(agentRef, {
+        'wallet_balance': FieldValue.increment(-amount),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 2. Create Payout Request
+      transaction.set(payoutRef, {
+        'agentId': uid,
+        'amount': amount,
+        'bankName': bankName,
+        'accountNumber': accountNumber,
+        'businessName': businessName ?? data['business_name'] ?? "Unknown",
+        'status': 'pending',
+        'agentTransactionId': transactionRef.id, // Store ref for atomic completion
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 3. Record Transaction (Debit)
+      transaction.set(transactionRef, {
+        'amount': amount,
+        'type': 'debit',
+        'description': 'Withdrawal Request: $bankName',
+        'date': FieldValue.serverTimestamp(),
+        'status': 'pending',
+        'payoutId': payoutRef.id,
+      });
     });
   }
 
@@ -275,17 +444,121 @@ class FirestoreService {
     return _db.collection('users').doc(uid).collection('notifications').orderBy('timestamp', descending: true).snapshots();
   }
 
-  Future<void> createNotification(String uid, String title, String body) async {
+  Future<void> createNotification(String uid, String title, String body, {String type = 'general'}) async {
     await _db.collection('users').doc(uid).collection('notifications').add({
       'title': title,
       'body': body,
       'timestamp': FieldValue.serverTimestamp(),
       'isRead': false,
+      'type': type,
     });
   }
 
-  Future<void> markNotificationAsRead(String uid, String notificationId) async {
-    await _db.collection('users').doc(uid).collection('notifications').doc(notificationId).update({'isRead': true});
+  Future<void> markNotificationAsRead(String uid, String notifId) async {
+    await _db.collection('users').doc(uid).collection('notifications').doc(notifId).update({
+      'isRead': true,
+    });
+  }
+
+  Future<void> refundPayout({
+    required String payoutId,
+    required String agentId,
+    required double amount,
+    required String reason,
+  }) async {
+    final agentRef = _db.collection('agents').doc(agentId);
+    final payoutRef = _db.collection('payouts').doc(payoutId);
+    final transactionRef = agentRef.collection('transactions').doc();
+
+    await _db.runTransaction((transaction) async {
+      final payoutSnap = await transaction.get(payoutRef);
+      if (!payoutSnap.exists) throw Exception("Payout record not found");
+      
+      final pData = payoutSnap.data() as Map<String, dynamic>;
+      final txId = pData['agentTransactionId'];
+
+      // 1. Increment Balance
+      transaction.update(agentRef, {
+        'wallet_balance': FieldValue.increment(amount),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 2. Update Payout Status
+      transaction.update(payoutRef, {
+        'status': 'rejected',
+        'rejectionReason': reason,
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 3. Mark original withdrawal transaction as rejected
+      if (txId != null) {
+        final txRef = agentRef.collection('transactions').doc(txId);
+        transaction.update(txRef, {
+          'status': 'rejected',
+          'description': 'Withdrawal Rejected: $reason',
+        });
+      }
+
+      // 4. Record Transaction (Credit - Refund)
+      transaction.set(transactionRef, {
+        'amount': amount,
+        'type': 'credit',
+        'description': 'Refund: Withdrawal Rejected',
+        'date': FieldValue.serverTimestamp(),
+        'status': 'completed',
+        'payoutId': payoutId,
+      });
+
+      // 5. Notify Agent
+      final notifRef = _db.collection('users').doc(agentId).collection('notifications').doc();
+      transaction.set(notifRef, {
+        'title': 'Withdrawal Rejected ❌',
+        'body': 'Your withdrawal request for GHS ${amount.toStringAsFixed(2)} was rejected: $reason. Funds have been returned to your wallet.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'type': 'PAYOUT_REJECTED',
+        'payoutId': payoutId,
+      });
+    });
+  }
+
+  Future<void> completePayout(String payoutId) async {
+    final payoutRef = _db.collection('payouts').doc(payoutId);
+    
+    await _db.runTransaction((transaction) async {
+      final payoutSnap = await transaction.get(payoutRef);
+      if (!payoutSnap.exists) throw Exception("Payout record not found");
+      
+      final pData = payoutSnap.data() as Map<String, dynamic>;
+      final agentId = pData['agentId'];
+      final amount = (pData['amount'] as num?)?.toDouble() ?? 0.0;
+      final txId = pData['agentTransactionId'];
+
+      // 1. Update Payout Status
+      transaction.update(payoutRef, {
+        'status': 'completed',
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 2. Update Transaction record in Agent's collection
+      if (txId != null) {
+        final txRef = _db.collection('agents').doc(agentId).collection('transactions').doc(txId);
+        transaction.update(txRef, {
+          'status': 'completed',
+        });
+      }
+
+      // 3. Notify Agent
+      final notifRef = _db.collection('users').doc(agentId).collection('notifications').doc();
+      transaction.set(notifRef, {
+        'title': 'Withdrawal Successful! ✅',
+        'body': 'Your withdrawal of GHS ${amount.toStringAsFixed(2)} has been processed and sent to your account.',
+        'timestamp': FieldValue.serverTimestamp(),
+        'isRead': false,
+        'type': 'PAYOUT_COMPLETED',
+        'payoutId': payoutId,
+      });
+    });
   }
 
   // ===========================================================================
@@ -326,5 +599,106 @@ class FirestoreService {
     } catch (e) {
       debugPrint("Error seeding database: $e");
     }
+  }
+
+  // ===========================================================================
+  // 11. CASCADE DELETE (ADMIN ONLY)
+  // ===========================================================================
+
+  Future<void> deleteHostelCascade(String hostelId) async {
+    final batch = _db.batch();
+    int operationCount = 0;
+
+    // 1. Delete Hostel Document
+    final hostelRef = _db.collection('hostels').doc(hostelId);
+    batch.delete(hostelRef);
+    operationCount++;
+
+    // 2. Delete Clips linked to this hostel
+    final clipsQuery = await _db.collection('clips').where('hostelId', isEqualTo: hostelId).get();
+    for (var doc in clipsQuery.docs) {
+      if (operationCount < 450) {
+        batch.delete(doc.reference);
+        operationCount++;
+      }
+    }
+
+    // 3. Delete Chats linked to this hostel (and messages)
+    final chatsQuery = await _db.collection('chats').where('hostelId', isEqualTo: hostelId).get();
+    for (var doc in chatsQuery.docs) {
+      final messages = await doc.reference.collection('messages').get();
+      for (var msg in messages.docs) {
+        if (operationCount < 450) {
+          batch.delete(msg.reference);
+          operationCount++;
+        }
+      }
+      if (operationCount < 450) {
+        batch.delete(doc.reference);
+        operationCount++;
+      }
+    }
+
+    // 4. Delete Bookings (Collection Group)
+    final bookingsQuery = await _db.collection('bookings').where('hostelId', isEqualTo: hostelId).get();
+    for (var doc in bookingsQuery.docs) {
+      final bookingId = doc.id;
+      
+      // 5. Delete associated Transactions (linked by bookingId)
+      final txns = await _db.collection('transactions').where('bookingId', isEqualTo: bookingId).get();
+      for (var t in txns.docs) {
+        if (operationCount < 450) {
+          batch.delete(t.reference);
+          operationCount++;
+        }
+      }
+
+      if (operationCount < 450) {
+        batch.delete(doc.reference);
+        operationCount++;
+      }
+    }
+
+    // 6. Remove from User Favorites
+    final usersWithFav = await _db.collection('users').where('favorites', arrayContains: hostelId).get();
+    for (var doc in usersWithFav.docs) {
+      if (operationCount < 450) {
+        batch.update(doc.reference, {'favorites': FieldValue.arrayRemove([hostelId])});
+        operationCount++;
+      }
+    }
+
+    await batch.commit();
+  }
+
+  Future<void> sendChatNotification({
+    required String recipientId,
+    required String senderName,
+    required String messageText,
+    required String chatId,
+  }) async {
+    await _db.collection('users').doc(recipientId).collection('notifications').add({
+      'title': "New message from $senderName",
+      'body': messageText,
+      'type': 'chat',
+      'chatId': chatId,
+      'senderId': _auth.currentUser?.uid,
+      'timestamp': FieldValue.serverTimestamp(),
+      'isRead': false,
+    });
+  }
+
+  Stream<int> getTotalUnreadCount(String uid) {
+    return _db.collection('chats')
+        .where('users', arrayContains: uid)
+        .snapshots()
+        .map((snapshot) {
+          int total = 0;
+          for (var doc in snapshot.docs) {
+            final data = doc.data();
+            total += (data['unreadCount_$uid'] as int? ?? 0);
+          }
+          return total;
+        });
   }
 }

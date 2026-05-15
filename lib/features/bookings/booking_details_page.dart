@@ -323,6 +323,21 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
                     ),
                   ],
                 ),
+                if (booking.roomType != null || booking.capacity != null) ...[
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Icon(Icons.meeting_room_rounded, size: 16, color: Colors.grey[500]),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          (booking.roomType?.replaceAll('-', ' ') ?? "${booking.capacity ?? '?'} in a room"),
+                          style: TextStyle(color: Colors.grey[500]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
                 const SizedBox(height: 24),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -405,14 +420,29 @@ class _BookingDetailsPageState extends State<BookingDetailsPage> {
                 ),
               ),
                 const SizedBox(height: 12),
-                Text(
-                  "Booking ID: ${booking.id.substring(0, 8).toUpperCase()}",
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    letterSpacing: 1.2,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    SelectableText(
+                      "ID: ${booking.id}",
+                      style: TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 11,
+                        color: Colors.grey[600],
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: booking.id));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text("Booking ID copied to clipboard"), duration: Duration(seconds: 1)),
+                        );
+                      },
+                      child: Icon(Icons.copy_rounded, size: 14, color: Colors.grey[400]),
+                    ),
+                  ],
                 ),
               ],
             ),

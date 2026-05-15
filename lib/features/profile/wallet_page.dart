@@ -65,19 +65,19 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   Positioned(
                     top: -100 + (_bgController.value * 30),
                     left: -50,
-                    child: _buildBlurCircle(300, Colors.purpleAccent.withValues(alpha: 0.2)),
+                    child: _buildBlurCircle(300, Colors.purpleAccent.withOpacity(0.2)),
                   ),
                   // Blob 2: Cyan (Bottom Right)
                   Positioned(
                     bottom: -50 - (_bgController.value * 50),
                     right: -100,
-                    child: _buildBlurCircle(350, Colors.cyanAccent.withValues(alpha: 0.15)),
+                    child: _buildBlurCircle(350, Colors.cyanAccent.withOpacity(0.15)),
                   ),
                   // Blob 3: Blue (Center moving)
                   Positioned(
                     top: 300,
                     left: -50 + (_bgController.value * 60),
-                    child: _buildBlurCircle(250, Colors.blueAccent.withValues(alpha: 0.1)),
+                    child: _buildBlurCircle(250, Colors.blueAccent.withOpacity(0.1)),
                   ),
                 ],
               );
@@ -149,7 +149,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             const Text("Recent Activity", style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
-                            Text("See All", style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+                            Text("See All", style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
                           ],
                         )),
 
@@ -168,7 +168,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                               return _buildAnimatedItem(3, 
                                 Padding(
                                   padding: const EdgeInsets.all(20),
-                                  child: Center(child: Text("No transactions yet", style: TextStyle(color: Colors.white.withValues(alpha: 0.5)))),
+                                  child: Center(child: Text("No transactions yet", style: TextStyle(color: Colors.white.withOpacity(0.5)))),
                                 )
                               );
                             }
@@ -231,9 +231,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       child: Container(
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.05),
+          color: Colors.white.withOpacity(0.05),
           shape: BoxShape.circle,
-          border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+          border: Border.all(color: Colors.white.withOpacity(0.1)),
         ),
         child: Icon(icon, color: Colors.white, size: 20),
       ),
@@ -252,17 +252,17 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.white.withValues(alpha: 0.15),
-                Colors.white.withValues(alpha: 0.05),
+                Colors.white.withOpacity(0.15),
+                Colors.white.withOpacity(0.05),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+            border: Border.all(color: Colors.white.withOpacity(0.2)),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.2),
+                color: Colors.black.withOpacity(0.2),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -276,7 +276,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text("Current Balance", style: TextStyle(color: Colors.white70, fontSize: 12)),
-                  Icon(Icons.wifi, color: Colors.white.withValues(alpha: 0.6)),
+                  Icon(Icons.wifi, color: Colors.white.withOpacity(0.6)),
                 ],
               ),
               Text(
@@ -290,7 +290,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
                   Container(
                     width: 40,
                     height: 24,
-                    decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(4)),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.8), borderRadius: BorderRadius.circular(4)),
                   )
                 ],
               )
@@ -311,9 +311,9 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
             height: 60,
             width: 60,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.05),
+              color: Colors.white.withOpacity(0.05),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+              border: Border.all(color: Colors.white.withOpacity(0.1)),
             ),
             child: Icon(icon, color: color, size: 26),
           ),
@@ -330,16 +330,16 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
+        color: Colors.white.withOpacity(0.03),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: isNegative ? Colors.redAccent.withValues(alpha: 0.1) : Colors.greenAccent.withValues(alpha: 0.1),
+              color: isNegative ? Colors.redAccent.withOpacity(0.1) : Colors.greenAccent.withOpacity(0.1),
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -354,7 +354,7 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600)),
-                Text(date, style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 12)),
+                Text(date, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
               ],
             ),
           ),
@@ -385,3 +385,4 @@ class _WalletPageState extends State<WalletPage> with TickerProviderStateMixin {
     );
   }
 }
+

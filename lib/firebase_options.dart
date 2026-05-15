@@ -45,7 +45,7 @@ class DefaultFirebaseOptions {
     appId: '1:33041190550:web:376defc727f41bde963cb7',
     messagingSenderId: '33041190550',
     projectId: 'device-streaming-d7021871',
-    authDomain: 'device-streaming-d7021871.firebaseapp.com',
+    authDomain: 'stayhubgh.com',
     storageBucket: 'device-streaming-d7021871.firebasestorage.app',
   );
 
@@ -84,7 +84,7 @@ class DefaultFirebaseOptions {
     appId: '1:33041190550:web:fc334885cd83a04c963cb7',
     messagingSenderId: '33041190550',
     projectId: 'device-streaming-d7021871',
-    authDomain: 'device-streaming-d7021871.firebaseapp.com',
+    authDomain: 'stayhubgh.com',
     storageBucket: 'device-streaming-d7021871.firebasestorage.app',
   );
 

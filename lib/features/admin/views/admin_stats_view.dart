@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
 
@@ -15,11 +16,6 @@ class AdminStatsView extends StatefulWidget {
 class _AdminStatsViewState extends State<AdminStatsView> {
   late Future<Map<String, dynamic>> _statsFuture;
 
-  @override
-  void initState() {
-    super.initState();
-    _statsFuture = _fetchRealStats();
-  }
 
   Future<Map<String, dynamic>> _fetchRealStats() async {
     final firestore = FirebaseFirestore.instance;
@@ -51,7 +47,7 @@ class _AdminStatsViewState extends State<AdminStatsView> {
     // Only fetch revenue if Super Admin
     if (widget.isSuper) {
       try {
-        final revenueSnapshot = await firestore.collectionGroup('bookings')
+        final revenueSnapshot = await firestore.collection('bookings')
             .where('status', isEqualTo: 'PAID')
             .limit(1000) // Safety limit
             .get();
@@ -92,6 +88,75 @@ class _AdminStatsViewState extends State<AdminStatsView> {
     };
   }
 
+  String _adminName = "Admin";
+  String? _adminSchool;
+
+  Future<void> _fetchAdminDetails() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    try {
+      String fetchedName = user.displayName ?? user.email?.split('@')[0] ?? "Admin";
+      String? fetchedSchool;
+
+      final firestore = FirebaseFirestore.instance;
+
+      // 1. Try admins collection by UID
+      final docByUid = await firestore.collection('admins').doc(user.uid).get();
+      if (docByUid.exists) {
+        fetchedName = docByUid.data()?['name'] ?? fetchedName;
+        fetchedSchool = docByUid.data()?['school'];
+      }
+
+      // 2. Try admins collection by email as doc ID
+      if (!docByUid.exists && user.email != null) {
+        final docByEmail = await firestore.collection('admins').doc(user.email).get();
+        if (docByEmail.exists) {
+          fetchedName = docByEmail.data()?['name'] ?? fetchedName;
+          fetchedSchool = docByEmail.data()?['school'];
+        }
+      }
+
+      // 3. Also try users collection for name/school
+      if (fetchedSchool == null || fetchedSchool.isEmpty) {
+        final userDoc = await firestore.collection('users').doc(user.uid).get();
+        if (userDoc.exists) {
+          fetchedName = userDoc.data()?['name'] ?? fetchedName;
+          fetchedSchool = userDoc.data()?['school'];
+        }
+      }
+
+      // 4. Try agents collection
+      if (fetchedSchool == null || fetchedSchool.isEmpty) {
+        final agentDoc = await firestore.collection('agents').doc(user.uid).get();
+        if (agentDoc.exists) {
+          fetchedName = agentDoc.data()?['name'] ?? fetchedName;
+          fetchedSchool = agentDoc.data()?['school'];
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _adminName = fetchedName.isEmpty ? (user.email ?? "Admin") : fetchedName;
+          _adminSchool = fetchedSchool;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error fetching admin details: $e");
+      if (mounted) {
+        setState(() {
+          _adminName = FirebaseAuth.instance.currentUser?.email ?? "Admin";
+        });
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _statsFuture = _fetchRealStats();
+    _fetchAdminDetails();
+  }
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -104,7 +169,17 @@ class _AdminStatsViewState extends State<AdminStatsView> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("Dashboard", style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 22)),
+            Row(
+              children: [
+                Flexible(
+                  child: Text("Welcome, ${_adminName.split(' ')[0]}", style: TextStyle(color: textColor, fontWeight: FontWeight.bold, fontSize: 22), overflow: TextOverflow.ellipsis),
+                ),
+                if (_adminSchool != null && _adminSchool!.isNotEmpty) ...[
+                  const SizedBox(width: 8),
+                  _buildSchoolBadge(_adminSchool!, isDark),
+                ],
+              ],
+            ),
             const Text("Platform Overview", style: TextStyle(fontSize: 13, fontWeight: FontWeight.w400)),
           ],
         ),
@@ -381,6 +456,67 @@ class _AdminStatsViewState extends State<AdminStatsView> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSchoolBadge(String schoolName, bool isDark) {
+    return FutureBuilder<QuerySnapshot>(
+      future: FirebaseFirestore.instance.collection('schools').get(),
+      builder: (context, snapshot) {
+        String? logoUrl;
+        String displayName = schoolName;
+
+        if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+          // Try exact match first, then partial/case-insensitive
+          final schoolNameLower = schoolName.toLowerCase().trim();
+          for (final doc in snapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            final storedName = (data['name'] ?? '').toString().toLowerCase().trim();
+            if (storedName == schoolNameLower ||
+                schoolNameLower.contains(storedName) ||
+                storedName.contains(schoolNameLower)) {
+              logoUrl = data['logo_url'];
+              displayName = data['name'] ?? schoolName;
+              break;
+            }
+          }
+        }
+
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+            color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (logoUrl != null && logoUrl.isNotEmpty) ...[
+                ClipOval(
+                  child: Image.network(
+                    logoUrl,
+                    width: 16, height: 16,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Icon(Icons.school, size: 12, color: isDark ? Colors.white : Colors.black),
+                  ),
+                ),
+                const SizedBox(width: 4),
+              ] else ...[
+                Icon(Icons.school, size: 12, color: isDark ? Colors.white : Colors.black),
+                const SizedBox(width: 4),
+              ],
+              Text(
+                displayName,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

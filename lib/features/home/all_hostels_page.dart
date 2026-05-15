@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
 import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/core/widgets/shimmer_hostel_card.dart';
+import 'package:stayhub/core/image_utils.dart';
 
 class AllHostelsPage extends StatefulWidget {
   const AllHostelsPage({super.key});
@@ -59,7 +60,7 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return ListView.separated(
-                    padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
                     itemCount: 6,
                     separatorBuilder: (_, __) => const SizedBox(height: 16),
                     itemBuilder: (_, __) => const ShimmerHostelCard(),
@@ -119,7 +120,34 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
   }
 
   Widget _buildHostelCard(Map<String, dynamic> data, String hostelId) {
-    final bool isFull = (data['isFull'] ?? false) || (data['capacity'] ?? 0) == 0;
+    final List<dynamic> rooms = data['rooms'] ?? [];
+    double minPrice = 0;
+    double maxPrice = 0;
+    int totalSlots = 0;
+
+    if (rooms.isNotEmpty) {
+      final prices = rooms.map((r) => ((r['price'] as num? ?? 0).toDouble() * 1.10)).toList();
+      prices.sort();
+      minPrice = prices.first;
+      maxPrice = prices.last;
+      
+      for (var r in rooms) {
+        totalSlots += (r['available'] as num? ?? 0).toInt();
+      }
+    } else {
+      final basePrice = (data['price'] is num) ? (data['price'] as num).toDouble() : (double.tryParse(data['price']?.toString() ?? '0') ?? 0.0);
+      minPrice = basePrice * 1.10;
+      maxPrice = minPrice;
+      
+      final rawCap = data['capacity'];
+      if (rawCap is num) {
+        totalSlots = rawCap.toInt();
+      } else {
+        totalSlots = int.tryParse(rawCap?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    final bool isFull = (data['isFull'] ?? false) || totalSlots <= 0;
     
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => HostelDetailsPage(hostel: data..['id'] = hostelId))),
@@ -128,7 +156,7 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
           color: Theme.of(context).cardColor,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 4))
+            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))
           ],
         ),
         child: Column(
@@ -140,10 +168,11 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
                   Hero(
                     tag: 'hostel_image_$hostelId',
                     child: CachedNetworkImage(
-                      imageUrl: data['image'] ?? '',
+                      imageUrl: ImageUtils.getSecureUrl(data['image'] ?? ''),
                       height: 180,
                       width: double.infinity,
                       fit: BoxFit.cover,
+                      memCacheWidth: 600,
                       placeholder: (_, __) => Container(color: Colors.grey[200]),
                     ),
                   ),
@@ -160,7 +189,7 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -170,45 +199,56 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
                       Expanded(
                         child: Text(
                           data['name'] ?? 'Unnamed', 
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           maxLines: 1, 
                           overflow: TextOverflow.ellipsis
                         ),
                       ),
                       Row(
                         children: [
-                          const Icon(Icons.star, color: Colors.amber, size: 16),
+                          const Icon(Icons.star, color: Colors.amber, size: 14),
                           const SizedBox(width: 4),
-                          Text("${data['rating'] ?? 'New'}", style: const TextStyle(fontWeight: FontWeight.bold)),
+                          Text("${data['rating'] ?? '4.5'}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                         ],
                       )
                     ],
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(Icons.location_on_outlined, size: 16, color: Colors.grey),
+                      const Icon(Icons.location_on_outlined, size: 14, color: Colors.grey),
                       const SizedBox(width: 4),
-                      Expanded(child: Text(data['location'] ?? 'Unknown Location', style: const TextStyle(color: Colors.grey))),
+                      Expanded(child: Text(data['location'] ?? 'Unknown Location', style: const TextStyle(color: Colors.grey, fontSize: 12))),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Expanded(
-                        child: Text(
-                          "GHS ${data['price'] ?? 0} / year", 
-                          style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold, fontSize: 16),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              minPrice == maxPrice 
+                                ? "GHS ${minPrice.toStringAsFixed(0)}" 
+                                : "GHS ${minPrice.toStringAsFixed(0)} - ${maxPrice.toStringAsFixed(0)}", 
+                              style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.w900, fontSize: 15),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              isFull ? "No Slots Left" : "$totalSlots Slots Left",
+                              style: TextStyle(color: isFull ? Colors.red : Colors.green, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        decoration: BoxDecoration(color: Theme.of(context).primaryColor.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(10)),
-                        child: Text("View Details", style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold, fontSize: 12)),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        decoration: BoxDecoration(color: Theme.of(context).primaryColor.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                        child: Text("View Details", style: TextStyle(color: Theme.of(context).primaryColor, fontWeight: FontWeight.bold, fontSize: 11)),
                       )
                     ],
                   )
@@ -221,3 +261,4 @@ class _AllHostelsPageState extends State<AllHostelsPage> {
     );
   }
 }
+

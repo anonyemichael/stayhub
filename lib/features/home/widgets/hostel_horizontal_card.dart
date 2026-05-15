@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:stayhub/features/home/hostel_details_page.dart';
+import 'package:stayhub/core/image_utils.dart';
 
 class HostelHorizontalCard extends StatelessWidget {
   final Map<String, dynamic> data;
@@ -17,7 +18,33 @@ class HostelHorizontalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool isFull = (data['isFull'] ?? false) || (data['capacity'] ?? 0) == 0;
+    final List<dynamic> rooms = data['rooms'] ?? [];
+    double minPrice = 0;
+    double maxPrice = 0;
+    int totalSlots = 0;
+
+    if (rooms.isNotEmpty) {
+      final prices = rooms.map((r) => ((r['price'] as num? ?? 0).toDouble() * 1.10)).toList();
+      prices.sort();
+      minPrice = prices.first;
+      maxPrice = prices.last;
+      for (var r in rooms) {
+        totalSlots += (r['available'] as num? ?? 0).toInt();
+      }
+    } else {
+      final basePrice = (data['price'] is num) ? (data['price'] as num).toDouble() : (double.tryParse(data['price']?.toString() ?? '0') ?? 0.0);
+      minPrice = basePrice * 1.10;
+      maxPrice = minPrice;
+      
+      final rawCap = data['capacity'];
+      if (rawCap is num) {
+        totalSlots = rawCap.toInt();
+      } else {
+        totalSlots = int.tryParse(rawCap?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    final bool isFull = (data['isFull'] ?? false) || totalSlots <= 0;
     // ... (rest of the build method init)
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final double screenWidth = MediaQuery.of(context).size.width;
@@ -34,7 +61,7 @@ class HostelHorizontalCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(24), 
           boxShadow: [
              BoxShadow(
-               color: isDark ? Colors.black.withValues(alpha: 0.3) : Colors.grey.withValues(alpha: 0.15),
+               color: isDark ? Colors.black.withOpacity(0.3) : Colors.grey.withOpacity(0.15),
                blurRadius: 12, 
                offset: const Offset(0, 6)
              )
@@ -51,14 +78,17 @@ class HostelHorizontalCard extends StatelessWidget {
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
                   child: Hero( 
                     tag: 'hostel_image_${data['id']}',
-                    child: CachedNetworkImage(
-                      imageUrl: _getSecureUrl(data['image']),
-                      height: 145, 
-                      width: double.infinity,
-                      fit: BoxFit.cover,
-                      placeholder: (_,__) => Container(color: Colors.grey[200]),
-                      errorWidget: (_,__,___) => Container(color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
-                    ),
+                    child: (data['image'] == null || data['image'].toString().isEmpty) 
+                      ? Container(height: 165, width: double.infinity, color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey))
+                      : CachedNetworkImage(
+                          imageUrl: ImageUtils.getSecureUrl(data['image']),
+                          height: 165, 
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          memCacheWidth: 600, // Constrain memory usage
+                          placeholder: (_,__) => Container(height: 165, color: Colors.grey[200]),
+                          errorWidget: (_,__,___) => Container(height: 165, color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
+                        ),
                   ),
                 ),
                 // ... (rest of stack)
@@ -70,7 +100,7 @@ class HostelHorizontalCard extends StatelessWidget {
                     height: 60,
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
-                        colors: [Colors.black.withValues(alpha: 0.6), Colors.transparent],
+                        colors: [Colors.black.withOpacity(0.6), Colors.transparent],
                         begin: Alignment.bottomCenter,
                         end: Alignment.topCenter,
                       )
@@ -84,9 +114,9 @@ class HostelHorizontalCard extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6), 
+                      color: Colors.black.withOpacity(0.6), 
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 0.5)
+                      border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.5)
                     ),
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
@@ -116,7 +146,7 @@ class HostelHorizontalCard extends StatelessWidget {
                    Positioned( 
                     top: 8, right: 8,
                     child: CircleAvatar(
-                      backgroundColor: Colors.white.withValues(alpha: 0.9),
+                      backgroundColor: Colors.white.withOpacity(0.9),
                       radius: 16,
                       child: Icon(Icons.favorite_border_rounded, size: 18, color: Colors.grey[600]),
                     )
@@ -130,12 +160,14 @@ class HostelHorizontalCard extends StatelessWidget {
                      decoration: BoxDecoration(
                        color: Theme.of(context).primaryColor,
                        borderRadius: BorderRadius.circular(12),
-                       boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 4, offset: const Offset(0, 2))]
+                       boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4, offset: const Offset(0, 2))]
                      ),
                      child: Text(
-                      "GHS ${data['price'] ?? '0'}", 
-                      style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 12),
-                    ),
+                        minPrice == maxPrice 
+                          ? "GHS ${minPrice.toStringAsFixed(0)}" 
+                          : "GHS ${minPrice.toStringAsFixed(0)}+", 
+                        style: const TextStyle(fontWeight: FontWeight.w800, color: Colors.white, fontSize: 12),
+                      ),
                   ),
                 ),
               ],
@@ -143,7 +175,7 @@ class HostelHorizontalCard extends StatelessWidget {
             
             // Details Section
             Padding(
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -151,39 +183,32 @@ class HostelHorizontalCard extends StatelessWidget {
                     data['name'] ?? '', 
                     style: TextStyle(
                       fontWeight: FontWeight.w700, 
-                      fontSize: 16,
-                      height: 1.2,
+                      fontSize: 14,
+                      height: 1.1,
                       color: Theme.of(context).textTheme.bodyLarge?.color,
                     ), 
                     maxLines: 1, 
                     overflow: TextOverflow.ellipsis
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 3),
                   Row(
                     children: [
-                      Icon(Icons.location_on_rounded, size: 14, color: Theme.of(context).primaryColor.withValues(alpha: 0.7)),
-                      const SizedBox(width: 4),
+                      Icon(Icons.location_on_rounded, size: 11, color: Theme.of(context).primaryColor.withOpacity(0.7)),
+                      const SizedBox(width: 3),
                       Expanded(
                         child: Text(
                           data['location'] ?? 'Unknown', 
-                          style: TextStyle(fontSize: 12, color: Theme.of(context).textTheme.bodySmall?.color, fontWeight: FontWeight.w500), 
+                          style: TextStyle(fontSize: 10, color: Theme.of(context).textTheme.bodySmall?.color, fontWeight: FontWeight.w500), 
                           maxLines: 1, 
                           overflow: TextOverflow.ellipsis
                         )
-                      )
+                      ),
+                      Text(
+                        isFull ? "FULL" : "$totalSlots left",
+                        style: TextStyle(fontSize: 9, color: isFull ? Colors.red : Colors.green, fontWeight: FontWeight.bold),
+                      ),
                     ]
                   ),
-                  const SizedBox(height: 8),
-                  // Amenities row (Optional creative touch)
-                  Row(
-                    children: [
-                        _buildMiniAmenityIcon(Icons.wifi, context),
-                        const SizedBox(width: 6),
-                        _buildMiniAmenityIcon(Icons.bolt, context),
-                        const SizedBox(width: 6),
-                        Text("+ more", style: TextStyle(fontSize: 10, color: Colors.grey[500]))
-                    ],
-                  )
                 ],
               ),
             )
@@ -197,10 +222,11 @@ class HostelHorizontalCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: Theme.of(context).dividerColor.withValues(alpha: 0.1),
+        color: Theme.of(context).dividerColor.withOpacity(0.1),
         shape: BoxShape.circle,
       ),
       child: Icon(icon, size: 10, color: Colors.grey),
     );
   }
 }
+

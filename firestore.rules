@@ -1,19 +1,174 @@
 rules_version = '2';
-
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // This rule allows anyone with your Firestore database reference to view, edit,
-    // and delete all data in your Firestore database. It is useful for getting
-    // started, but it is configured to expire after 30 days because it
-    // leaves your app open to attackers. At that time, all client
-    // requests to your Firestore database will be denied.
-    //
-    // Make sure to write security rules for your app before that time, or else
-    // all client requests to your Firestore database will be denied until you Update
-    // your rules
-    match /{document=**} {
-      allow read, write: if request.time < timestamp.date(2026, 12, 30);
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
     }
+    
+    function isSuperAdmin() {
+      return isAuthenticated() && 
+        (request.auth.token.get('email', '') == 'anonyemichael6@gmail.com' || 
+         request.auth.token.get('email', '') == 'admin@stayhub.com');
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || 
+        (isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.token.get('email', ''))));
+    }
+
+    function isAgent() {
+      return isAuthenticated() && 
+        (exists(/databases/$(database)/documents/agents/$(request.auth.uid)) || 
+         request.auth.token.get('role', '') == 'agent');
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Admins Collection
+    match /admins/{email} {
+      allow read: if isAuthenticated() && (request.auth.token.get('email', '') == email || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isOwner(userId) || isAdmin();
+
+      match /notifications/{notifId} {
+        allow read: if isOwner(userId) || isAdmin();
+        allow write: if isAdmin(); // Notifications are usually system-generated
+      }
+      
+      match /bookings/{bookingId} {
+        allow read: if isOwner(userId) || isAdmin() || isAgent();
+        allow write: if isAdmin();
+      }
+
+      match /{allPaths=**} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    // Agents Collection
+    match /agents/{agentId} {
+      // Basic profile can be read by students to see who they are booking with
+      allow read: if isAuthenticated(); 
+      // Only the agent or admin can modify their profile
+      allow write: if isOwner(agentId) || isAdmin();
+
+      // Protected subcollections
+      match /transactions/{txId} {
+        allow read: if isOwner(agentId) || isAdmin();
+        allow write: if false; // Transactions are system-managed
+      }
+      
+      match /payouts/{payoutId} {
+        allow read: if isOwner(agentId) || isAdmin();
+        allow write: if isOwner(agentId) || isAdmin();
+      }
+    }
+
+    // Hostels Collection
+    match /hostels/{hostelId} {
+      allow read: if true; 
+      allow write: if isAdmin() || (isAgent() && request.resource.data.agentId == request.auth.uid);
+
+      match /reviews/{reviewId} {
+        allow read: if true;
+        allow write: if isAuthenticated();
+      }
+    }
+
+    // Bookings Collection
+    match /bookings/{bookingId} {
+      allow read: if isAuthenticated() && (
+        request.auth.uid == resource.data.userId || 
+        request.auth.uid == resource.data.agentId ||
+        request.auth.uid == resource.data.ownerId ||
+        (resource.data.hostelSnapshot != null && (
+          request.auth.uid == resource.data.hostelSnapshot.agentId ||
+          request.auth.uid == resource.data.hostelSnapshot.ownerId
+        )) ||
+        isAdmin()
+      );
+      allow write: if isAdmin();
+    }
+
+    // Payouts Collection (Top-level or Subcollection)
+    match /payouts/{payoutId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.agentId == request.auth.uid);
+      allow create: if isAgent() && request.resource.data.agentId == request.auth.uid;
+      allow update: if isAdmin(); // Only admin can approve/reject
+      allow delete: if isAdmin();
+    }
+
+    // Reports Collection
+    match /reports/{reportId} {
+      allow read, write: if isAdmin();
+      allow create: if isAuthenticated();
+    }
+
+    // Audit Logs
+    match /bookingAuditLogs/{logId} {
+      allow read: if isAuthenticated() && (
+        (exists(/databases/$(database)/documents/bookings/$(resource.data.bookingId)) && 
+         get(/databases/$(database)/documents/bookings/$(resource.data.bookingId)).data.userId == request.auth.uid) || 
+        isAdmin()
+      );
+      allow write: if false;
+    }
+
+    // Payment Locks
+    match /paymentLocks/{lockId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Schools Collection
+    match /schools/{schoolId} {
+      allow read: if true; 
+      allow write: if isAdmin();
+    }
+
+    // Announcements Collection
+    match /announcements/{announcementId} {
+      allow read: if true; 
+      allow write: if isAdmin();
+    }
+
+    // Chats Collection
+    match /chats/{chatId} {
+      allow read: if isAuthenticated() && (request.auth.uid in resource.data.get('users', []) || isAdmin());
+      allow create: if isAuthenticated();
+      allow update: if isAuthenticated() && (request.auth.uid in resource.data.get('users', []) || isAdmin());
+      
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() && (request.auth.uid in get(/databases/$(database)/documents/chats/$(chatId)).data.get('users', []) || isAdmin());
+        allow create: if isAuthenticated();
+      }
+    }
+
+    // Clips Collection
+    match /clips/{clipId} {
+      allow read: if true;
+      allow write: if isAdmin() || isAgent();
+    }
+
+    // Room State Registry (Managed by backend)
+    match /hostelRoomStates/{stateId} {
+      allow read: if isAuthenticated();
+      allow write: if false;
+    }
+
+    // Idempotency Keys
+    match /idempotencyKeys/{key} {
+      allow read, write: if false;
+    }
+
+    // NO GLOBAL FALLBACK - All access must be explicitly defined above
   }
 }

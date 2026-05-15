@@ -102,12 +102,12 @@ class _AdvancedFilterModalState extends State<AdvancedFilterModal> {
                   decoration: BoxDecoration(
                     color: isSelected ? Theme.of(context).primaryColor : Colors.transparent,
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.withValues(alpha: 0.3)),
+                    border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.withOpacity(0.3)),
                   ),
                   child: Text(
                     amenity,
                     style: TextStyle(
-                      color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.8),
+                      color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.8),
                       fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                     ),
                   ),
@@ -142,3 +142,4 @@ class _AdvancedFilterModalState extends State<AdvancedFilterModal> {
     );
   }
 }
+

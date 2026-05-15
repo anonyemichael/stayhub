@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:app_links/app_links.dart';
 import 'package:stayhub/auth/new_password_page.dart';
+import 'package:stayhub/features/bookings/payment_callback_page.dart';
 
 class DeepLinkService {
   static final DeepLinkService _instance = DeepLinkService._internal();
@@ -12,7 +13,11 @@ class DeepLinkService {
   StreamSubscription<Uri>? _linkSubscription;
 
   void init(GlobalKey<NavigatorState> navigatorKey) {
-    _initDeepLinks(navigatorKey);
+    try {
+      _initDeepLinks(navigatorKey);
+    } catch (e) {
+      debugPrint('DeepLinkService: Initialization failed: $e');
+    }
   }
 
   Future<void> _initDeepLinks(GlobalKey<NavigatorState> navigatorKey) async {
@@ -31,6 +36,7 @@ class DeepLinkService {
   }
 
   void _handleDeepLink(Uri uri, GlobalKey<NavigatorState> navigatorKey) {
+    try {
     if (uri.path.contains('reset-password') || uri.queryParameters.containsKey('oobCode')) {
       final code = uri.queryParameters['oobCode'];
       final email = uri.queryParameters['email']; // Optional
@@ -43,6 +49,31 @@ class DeepLinkService {
           ),
         );
       }
+    } else if (uri.path.contains('payment-callback') || 
+               uri.toString().contains('success') ||
+               uri.queryParameters.containsKey('trxref') ||
+               uri.queryParameters.containsKey('reference')) {
+      
+      final reference = uri.queryParameters['reference'] ?? uri.queryParameters['trxref'];
+      final bookingId = uri.queryParameters['bookingId'];
+      final userId = uri.queryParameters['userId'];
+      final amountStr = uri.queryParameters['amount'];
+      final double? amount = amountStr != null ? double.tryParse(amountStr) : null;
+
+      debugPrint('DeepLinkService: Navigating to PaymentCallbackPage with ref: $reference');
+      navigatorKey.currentState?.push(
+        MaterialPageRoute(
+          builder: (_) => PaymentCallbackPage(
+            reference: reference,
+            bookingId: bookingId,
+            userId: userId,
+            amount: amount,
+          ),
+        ),
+      );
+    }
+    } catch (e) {
+      debugPrint('DeepLinkService: Error handling link $uri: $e');
     }
   }
 

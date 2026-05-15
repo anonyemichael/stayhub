@@ -42,8 +42,8 @@ class _AdminBookingsViewState extends State<AdminBookingsView> {
         ],
       ),
       body: StreamBuilder<QuerySnapshot>(
-        // SAFE QUERY: No orderBy to avoid Composite Index errors
-        stream: FirebaseFirestore.instance.collectionGroup('bookings')
+        stream: FirebaseFirestore.instance.collection('bookings')
+            .orderBy('bookingDate', descending: true)
             .limit(100) 
             .snapshots(),
         builder: (context, snapshot) {
@@ -110,7 +110,9 @@ class _AdminBookingsViewState extends State<AdminBookingsView> {
               final bookingId = docs[index].id;
               final splitCode = data['subaccount_code'] ?? 'N/A';
               final hostelName = data['hostelName'] ?? 'Unknown Hostel';
-              final roomType = data['roomType'] ?? 'Room';
+              final rawRoomType = data['roomType'] ?? 'Standard Room';
+              final roomCap = data['capacity']?.toString() ?? '?';
+              final roomType = rawRoomType.replaceAll('-', ' ');
 
               return Container(
                 padding: const EdgeInsets.all(16),
@@ -127,7 +129,7 @@ class _AdminBookingsViewState extends State<AdminBookingsView> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text("#${bookingId.substring(0, 8).toUpperCase()}", style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold)),
+                        Text(bookingId.toUpperCase(), style: TextStyle(color: Colors.grey[500], fontSize: 12, fontWeight: FontWeight.bold)),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(color: _getStatusColor(status).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
@@ -150,7 +152,12 @@ class _AdminBookingsViewState extends State<AdminBookingsView> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(hostelName, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: textColor)),
-                            Text(roomType, style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                            Text(
+                               !roomType.toLowerCase().contains('in a room') 
+                                 ? "$roomType ($roomCap in a room)" 
+                                 : roomType, 
+                               style: TextStyle(color: Colors.grey[500], fontSize: 13)
+                             ),
                           ],
                         ))
                       ],

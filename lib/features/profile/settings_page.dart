@@ -11,6 +11,9 @@ import 'package:stayhub/features/admin/admin_dashboard.dart';
 import 'package:stayhub/auth/auth_page.dart'; // For redirection after delete
 import 'package:stayhub/features/profile/privacy_page.dart';
 import 'package:stayhub/features/profile/terms_page.dart';
+import 'package:stayhub/features/profile/notifications_settings_page.dart';
+import 'package:stayhub/features/profile/help_page.dart';
+import 'package:stayhub/features/profile/change_password_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -34,6 +37,29 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) {
       setState(() => _appVersion = "v${info.version}");
     }
+  }
+
+  Future<bool> _isUserAdmin(User currentUser) async {
+    // 1. Check super admins
+    const superAdmins = ['anonyemichael6@gmail.com', 'admin@stayhub.com'];
+    if (currentUser.email != null && superAdmins.contains(currentUser.email)) {
+      return true;
+    }
+
+    // 2. Check admins collection
+    if (currentUser.email != null) {
+      final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(currentUser.email).get();
+      if (adminDoc.exists) return true;
+    }
+
+    // 3. Check users collection role
+    final userDoc = await FirebaseFirestore.instance.collection('users').doc(currentUser.uid).get();
+    if (userDoc.exists) {
+      final role = userDoc.data()?['role'] ?? 'student';
+      if (role == 'admin') return true;
+    }
+
+    return false;
   }
 
   Future<void> _confirmDeleteAccount(BuildContext context) async {
@@ -83,79 +109,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _showChangePasswordDialog(BuildContext context) async {
-    final passwordCtrl = TextEditingController();
-    final confirmCtrl = TextEditingController();
-    bool isLoading = false;
-
-    await showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text("Change Password"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: passwordCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "New Password", border: OutlineInputBorder()),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: confirmCtrl,
-                obscureText: true,
-                decoration: const InputDecoration(labelText: "Confirm Password", border: OutlineInputBorder()),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-            ElevatedButton(
-              onPressed: isLoading ? null : () async {
-                if (passwordCtrl.text != confirmCtrl.text) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Passwords do not match")));
-                  return;
-                }
-                if (passwordCtrl.text.length < 6) {
-                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password must be at least 6 characters")));
-                   return;
-                }
-
-                setDialogState(() => isLoading = true);
-                try {
-                  await FirebaseAuth.instance.currentUser!.updatePassword(passwordCtrl.text);
-                  
-                  // Also update in Firestore if they are an agent and we stored it there (for legacy/admin sync)
-                  final email = FirebaseAuth.instance.currentUser!.email;
-                  if (email != null) {
-                    await FirebaseFirestore.instance.collection('agents').doc(email).update({
-                      'password': passwordCtrl.text,
-                    }).catchError((_) {}); // Ignore if not an agent doc
-                  }
-
-                  if (mounted) Navigator.pop(context);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Password updated successfully!")));
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}\n(You may need to logout and login again for security)")));
-                  }
-                } finally {
-                  if (mounted) setDialogState(() => isLoading = false);
-                }
-              },
-              child: isLoading ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : const Text("Update"),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
     final themeProvider = context.watch<ThemeProvider>();
-    final isDark = themeProvider.isDarkMode;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     
     // Modern Color Palette
     final bgColor = isDark ? const Color(0xFF000000) : const Color(0xFFF2F2F7); // iOS-like Grouped Background
@@ -234,7 +192,7 @@ class _SettingsPageState extends State<SettingsPage> {
                    _buildSwitchTile(
                     title: "Dark Mode",
                     icon: Icons.dark_mode,
-                    iconColor: Colors.indigo,
+                    iconColor: const Color(0xFF3F51B5), // Dark blue
                     value: isDark,
                     boxColor: boxColor,
                     textColor: textColor,
@@ -243,27 +201,44 @@ class _SettingsPageState extends State<SettingsPage> {
                       themeProvider.toggleTheme(val);
                     },
                   ),
-                ],
-              ),
-            ),
-            // 3. Security Section
-            _buildSectionHeader("SECURITY & ACCOUNT", secondaryTextColor),
-            Container(
-              decoration: BoxDecoration(color: boxColor, borderRadius: BorderRadius.circular(16)),
-              child: Column(
-                children: [
+                  _buildDivider(isDark),
                   _buildNavTile(
-                    title: "Change Password",
-                    icon: Icons.lock_reset,
-                    iconColor: Colors.blueAccent,
+                    title: "Notifications",
+                    icon: Icons.notifications,
+                    iconColor: const Color(0xFFFF4081), // Pink/Red
                     boxColor: boxColor,
                     textColor: textColor,
-                    onTap: () => _showChangePasswordDialog(context),
+                    onTap: () => Navigator.push(
+                      context, 
+                      MaterialPageRoute(builder: (_) => const NotificationsSettingsPage())
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 24),
+            // 3. Security Section
+            if (user?.providerData.any((p) => p.providerId == 'password') ?? false) ...[
+              _buildSectionHeader("SECURITY & ACCOUNT", secondaryTextColor),
+              Container(
+                decoration: BoxDecoration(color: boxColor, borderRadius: BorderRadius.circular(16)),
+                child: Column(
+                  children: [
+                    _buildNavTile(
+                      title: "Change Password",
+                      icon: Icons.lock_reset,
+                      iconColor: const Color(0xFF448AFF), // Light Blue
+                      boxColor: boxColor,
+                      textColor: textColor,
+                      onTap: () => Navigator.push(
+                        context, 
+                        MaterialPageRoute(builder: (_) => const ChangePasswordPage(collection: 'users'))
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+            ],
 
             // 4. Info & Support Section
             _buildSectionHeader("SUPPORT & ABOUT", secondaryTextColor),
@@ -272,9 +247,21 @@ class _SettingsPageState extends State<SettingsPage> {
               child: Column(
                 children: [
                   _buildNavTile(
+                    title: "Help & Support",
+                    icon: Icons.help,
+                    iconColor: const Color(0xFF9C27B0), // Purple
+                    boxColor: boxColor,
+                    textColor: textColor,
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (_) => const HelpPage())
+                    ),
+                  ),
+                  _buildDivider(isDark),
+                  _buildNavTile(
                     title: "Privacy Policy",
                     icon: Icons.privacy_tip,
-                    iconColor: Colors.teal,
+                    iconColor: const Color(0xFF009688), // Teal
                     boxColor: boxColor,
                     textColor: textColor,
                     onTap: () => Navigator.push(
@@ -286,7 +273,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   _buildNavTile(
                     title: "Terms of Service",
                     icon: Icons.description,
-                    iconColor: Colors.orange,
+                    iconColor: const Color(0xFFFF9800), // Orange
                     boxColor: boxColor,
                     textColor: textColor,
                     onTap: () => Navigator.push(
@@ -298,7 +285,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   _buildNavTile(
                     title: "About StayHub",
                     icon: Icons.info,
-                    iconColor: Colors.blue,
+                    iconColor: const Color(0xFF2196F3), // Bright Blue
                     boxColor: boxColor,
                     textColor: textColor,
                     trailing: Text(_appVersion, style: TextStyle(color: secondaryTextColor, fontSize: 14)),
@@ -324,15 +311,25 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
 
-            // 5. DEBUG MODE: OPEN ACCESS
+            // 5. ADMIN PANEL (Only visible to admins)
             if (user != null)
-              Column(
-                children: [
-                   _buildAdminButton(context),
-                   const SizedBox(height: 10),
-                   const Text("DEBUG: ADMIN OPEN TO ALL", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-                   Text("Your email: ${user!.email}", style: const TextStyle(color: Colors.grey, fontSize: 12)),
-                ],
+              FutureBuilder<bool>(
+                future: _isUserAdmin(user!),
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) return const SizedBox.shrink();
+                  final isAdmin = snapshot.data ?? false;
+                  
+                  if (isAdmin) {
+                    return Column(
+                      children: [
+                         _buildAdminButton(context),
+                         const SizedBox(height: 10),
+                         const Text("ADMIN ACCESS GRANTED", style: TextStyle(color: Colors.green, fontSize: 12)),
+                      ],
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
 
              const SizedBox(height: 50),

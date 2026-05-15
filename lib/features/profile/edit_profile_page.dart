@@ -1,12 +1,16 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-// import 'dart:io' show File;
 import 'package:flutter/services.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:stayhub/services/cloudinary_service.dart';
 import 'package:stayhub/services/app_config_service.dart';
+import 'package:stayhub/services/local_cache_service.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:stayhub/core/school_utils.dart';
+import 'package:stayhub/core/image_utils.dart';
 
 class EditProfilePage extends StatefulWidget {
   const EditProfilePage({super.key});
@@ -19,19 +23,22 @@ class _EditProfilePageState extends State<EditProfilePage> {
   final _formKey = GlobalKey<FormState>();
   final String? _uid = FirebaseAuth.instance.currentUser?.uid;
 
-  // Controllers
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
   late TextEditingController _emailController;
-  String? _selectedSchool;
-  final List<String> _schools = ['UENR', 'CUG', 'UDS'];
+  late TextEditingController _bioController;
+  
+  Map<String, dynamic>? _selectedSchoolData;
+  String? _selectedLevel;
+  final List<Map<String, dynamic>> _schools = [];
+  final List<String> _levels = ['100', '200', '300', '400', '500', '600', 'Post-Graduate', 'Other'];
 
   bool _isLoading = true;
   bool _isSaving = false;
   String _userCollection = 'users';
   XFile? _imageFile;
   String? _photoUrl;
-  bool _isPickingImage = false; // Flag to prevent multiple image pickers
+  bool _isPickingImage = false;
 
   @override
   void initState() {
@@ -39,6 +46,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _nameController = TextEditingController();
     _phoneController = TextEditingController();
     _emailController = TextEditingController();
+    _bioController = TextEditingController();
     _fetchUserData();
   }
 
@@ -47,6 +55,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
     _nameController.dispose();
     _phoneController.dispose();
     _emailController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
@@ -54,62 +63,81 @@ class _EditProfilePageState extends State<EditProfilePage> {
     if (_uid == null) return;
 
     try {
-      DocumentSnapshot? userDoc;
-      if ((await FirebaseFirestore.instance.collection('admins').doc(_uid).get()).exists) {
-        userDoc = await FirebaseFirestore.instance.collection('admins').doc(_uid).get();
-        _userCollection = 'admins';
-      } else if ((await FirebaseFirestore.instance.collection('agents').doc(_uid).get()).exists) {
+      final schoolsFuture = FirebaseFirestore.instance.collection('schools').get();
+      
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
+      _userCollection = 'users';
+      
+      if (!userDoc.exists) {
         userDoc = await FirebaseFirestore.instance.collection('agents').doc(_uid).get();
         _userCollection = 'agents';
-      } else {
-        userDoc = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
-        _userCollection = 'users';
+      }
+      if (!userDoc.exists) {
+        userDoc = await FirebaseFirestore.instance.collection('admins').doc(_uid).get();
+        _userCollection = 'admins';
       }
 
-      // Fetch dynamic schools if available
-      final config = await AppConfigService().getConfig();
-      final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
-      if (dynSchools.isNotEmpty && mounted) {
+      final schoolsSnap = await schoolsFuture;
+      if (mounted) {
         setState(() {
           _schools.clear();
-          _schools.addAll(dynSchools);
-        });
-      }
-
-      if (userDoc.exists && mounted) {
-        final data = userDoc.data() as Map<String, dynamic>;
-        setState(() {
-          _nameController.text = data['fullName'] ?? data['name'] ?? '';
-          _phoneController.text = data['phoneNumber'] ?? '';
-          _emailController.text = FirebaseAuth.instance.currentUser?.email ?? '';
-          _selectedSchool = data['school'];
-          _photoUrl = data['photoUrl'];
+          _schools.addAll(schoolsSnap.docs.map((d) => d.data() as Map<String, dynamic>).toList());
+          
+          if (userDoc.exists) {
+            final data = userDoc.data() as Map<String, dynamic>;
+            _populateFields(data);
+          }
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error fetching user: $e")));
-        setState(() => _isLoading = false);
+      debugPrint("Error fetching user: $e");
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  void _populateFields(Map<String, dynamic> data) {
+    _nameController.text = data['fullName'] ?? data['name'] ?? '';
+    _phoneController.text = data['phoneNumber'] ?? '';
+    _emailController.text = FirebaseAuth.instance.currentUser?.email ?? '';
+    _selectedLevel = data['level']?.toString();
+    _photoUrl = data['photoUrl'];
+    _bioController.text = data['bio'] ?? data['description'] ?? '';
+    
+    final schoolName = data['school']?.toString().trim().toUpperCase();
+    if (schoolName != null && _schools.isNotEmpty) {
+      // Try robust matching
+      try {
+        _selectedSchoolData = _schools.firstWhere(
+          (s) {
+            final sName = s['name']?.toString().trim().toUpperCase();
+            return sName == schoolName;
+          },
+          orElse: () => _schools.firstWhere(
+            (s) => s['name']?.toString().trim().toUpperCase().contains(schoolName) ?? false,
+            orElse: () => {},
+          ),
+        );
+        
+        if (_selectedSchoolData?.isEmpty ?? true) {
+          _selectedSchoolData = null;
+        }
+      } catch (e) {
+        _selectedSchoolData = null;
       }
     }
   }
 
   Future<void> _pickAndUploadImage() async {
-    if (_isPickingImage) return; // Prevent multiple instances
+    if (_isPickingImage) return;
     setState(() => _isPickingImage = true);
 
     try {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-
-      if (pickedFile != null) {
-        setState(() => _imageFile = pickedFile);
-      }
+      if (pickedFile != null) setState(() => _imageFile = pickedFile);
     } finally {
-      if (mounted) {
-        setState(() => _isPickingImage = false);
-      }
+      if (mounted) setState(() => _isPickingImage = false);
     }
   }
 
@@ -128,21 +156,19 @@ class _EditProfilePageState extends State<EditProfilePage> {
       Map<String, dynamic> dataToUpdate = {
         'fullName': _nameController.text.trim(),
         'phoneNumber': _phoneController.text.trim(),
-        'school': _selectedSchool,
+        'school': _selectedSchoolData?['name'],
+        'level': _userCollection == 'agents' ? null : _selectedLevel,
+        'bio': _bioController.text.trim(),
         'lastUpdated': FieldValue.serverTimestamp(),
       };
 
-      if (newPhotoUrl != null) {
-        dataToUpdate['photoUrl'] = newPhotoUrl;
-      }
+      if (newPhotoUrl != null) dataToUpdate['photoUrl'] = newPhotoUrl;
 
       await FirebaseFirestore.instance.collection(_userCollection).doc(_uid).set(dataToUpdate, SetOptions(merge: true));
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Profile updated successfully")),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile updated successfully")));
       }
     } catch (e) {
       if (mounted) {
@@ -155,13 +181,13 @@ class _EditProfilePageState extends State<EditProfilePage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
-    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
 
     return Scaffold(
       backgroundColor: bgColor,
       body: _isLoading
-          ? _buildSkeletonLoader(context)
+          ? const Center(child: CircularProgressIndicator())
           : CustomScrollView(
               physics: const BouncingScrollPhysics(),
               slivers: [
@@ -175,24 +201,30 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     background: Center(
                       child: Stack(
                         children: [
-                          CircleAvatar(
-                            radius: 60,
-                            backgroundImage: (_imageFile != null 
-                                ? (kIsWeb ? NetworkImage(_imageFile!.path) : NetworkImage(_imageFile!.path)) // FileImage removed for web compat
-                                : (_photoUrl != null && _photoUrl!.isNotEmpty 
-                                    ? NetworkImage(_photoUrl!) 
-                                    : const AssetImage('assets/logo/logo.png'))) as ImageProvider,
-                            onBackgroundImageError: (_, __) { /* Handles NetworkImage failure */ },
+                          Container(
+                            width: 120, height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(color: Colors.blueAccent.withOpacity(0.2), width: 4),
+                              image: DecorationImage(
+                                image: _imageFile != null 
+                                    ? FileImage(File(_imageFile!.path)) 
+                                    : (_photoUrl != null && _photoUrl!.isNotEmpty 
+                                        ? CachedNetworkImageProvider(ImageUtils.getSecureUrl(_photoUrl!)) 
+                                        : const AssetImage('assets/logo/logo.png')) as ImageProvider,
+                                fit: BoxFit.cover,
+                              ),
+                            ),
                           ),
                           Positioned(
                             bottom: 0,
                             right: 0,
                             child: GestureDetector(
                               onTap: _pickAndUploadImage,
-                              child: CircleAvatar(
-                                backgroundColor: isDark ? Colors.cyanAccent : Colors.blueAccent,
-                                radius: 20,
-                                child: const Icon(Icons.camera_alt, size: 20, color: Colors.black),
+                              child: const CircleAvatar(
+                                backgroundColor: Color(0xFF2563EB),
+                                radius: 18,
+                                child: Icon(Icons.camera_alt_rounded, size: 18, color: Colors.white),
                               ),
                             ),
                           )
@@ -203,35 +235,43 @@ class _EditProfilePageState extends State<EditProfilePage> {
                 ),
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.all(24),
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Form(
                       key: _formKey,
                       child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildInput(context, "Full Name", _nameController, Icons.person_outline),
+                          const Text("Personal Info", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
+                          const SizedBox(height: 24),
+                          _buildInput("Full Name", _nameController, Icons.person_rounded, isDark),
                           const SizedBox(height: 20),
-                          _buildInput(context, "Email Address", _emailController, Icons.email_outlined, readOnly: true),
+                          _buildSchoolSelector(isDark),
                           const SizedBox(height: 20),
-                          _buildSchoolDropdown(context, isDark),
+                          if (_userCollection != 'agents') ...[
+                             _buildLevelSelector(isDark),
+                             const SizedBox(height: 20),
+                          ],
+                          _buildInput("Phone Number", _phoneController, Icons.phone_android_rounded, isDark, keyboardType: TextInputType.phone),
                           const SizedBox(height: 20),
-                          _buildInput(context, "Phone Number", _phoneController, Icons.phone_android_outlined, keyboardType: TextInputType.phone),
+                          _buildInput("Professional Bio", _bioController, Icons.article_rounded, isDark, maxLines: 3),
                           const SizedBox(height: 40),
                           SizedBox(
                             width: double.infinity,
-                            height: 56,
+                            height: 60,
                             child: ElevatedButton(
                               onPressed: _isSaving ? null : _saveProfile,
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: isDark ? Colors.cyanAccent : Colors.blueAccent,
-                                foregroundColor: isDark ? Colors.black : Colors.white,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                backgroundColor: const Color(0xFF2563EB),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
                                 elevation: 0,
                               ),
                               child: _isSaving
-                                  ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : const Text("Save Changes", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                                  ? const CircularProgressIndicator(color: Colors.white)
+                                  : const Text("SAVE CHANGES", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
                             ),
                           ),
+                          const SizedBox(height: 100),
                         ],
                       ),
                     ),
@@ -242,36 +282,91 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Widget _buildSchoolDropdown(BuildContext context, bool isDark) {
-    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
-    final glassColor = isDark ? Colors.white.withOpacity(0.08) : Colors.black.withOpacity(0.05);
-
+  Widget _buildSchoolSelector(bool isDark) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text("University", style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 13, fontWeight: FontWeight.bold)),
+        const Text("University / Institution", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        InkWell(
+          onTap: () => _showSchoolPicker(isDark),
+          borderRadius: BorderRadius.circular(18),
+          child: Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100], borderRadius: BorderRadius.circular(18)),
+            child: Row(
+              children: [
+                if (_selectedSchoolData != null) ...[
+                  ClipOval(
+                    child: CachedNetworkImage(
+                      imageUrl: SchoolUtils.getSchoolLogo(_selectedSchoolData!['name'] ?? '', {} ) ?? '', 
+                      height: 28, width: 28, 
+                      fit: BoxFit.cover,
+                      errorWidget: (context, url, error) => const Icon(Icons.school, size: 20)
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ] else ...[
+                  const Icon(Icons.school_rounded, color: Color(0xFF2563EB), size: 20),
+                  const SizedBox(width: 12),
+                ],
+                Expanded(child: Text(_selectedSchoolData?['name'] ?? "Select Institution", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14))),
+                const Icon(Icons.expand_more_rounded, color: Colors.grey),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  void _showSchoolPicker(bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => ListView.builder(
+        padding: const EdgeInsets.all(24),
+        itemCount: _schools.length,
+        itemBuilder: (context, index) {
+          final school = _schools[index];
+          final String? logo = SchoolUtils.getSchoolLogo(school['name'] ?? '', {});
+          return ListTile(
+            leading: ClipOval(
+              child: CachedNetworkImage(
+                imageUrl: logo ?? '', 
+                height: 32, width: 32, 
+                fit: BoxFit.cover,
+                errorWidget: (context, url, error) => const Icon(Icons.school_rounded, color: Color(0xFF2563EB))
+              ),
+            ),
+            title: Text(school['name'] ?? 'Unknown', style: const TextStyle(fontWeight: FontWeight.bold)),
+            onTap: () {
+              setState(() => _selectedSchoolData = school);
+              Navigator.pop(context);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildLevelSelector(bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text("Academic Level", style: TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: glassColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: textColor.withOpacity(0.1)),
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100], borderRadius: BorderRadius.circular(18)),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<String>(
-              value: _selectedSchool,
+              value: _selectedLevel,
               isExpanded: true,
-              hint: Text("Select your school", style: TextStyle(color: textColor.withOpacity(0.4), fontWeight: FontWeight.w500)),
               dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-              icon: Icon(Icons.school_outlined, color: textColor.withOpacity(0.4)),
-              items: _schools.map((school) {
-                return DropdownMenuItem(
-                  value: school,
-                  child: Text(school, style: TextStyle(color: textColor, fontWeight: FontWeight.w500)),
-                );
-              }).toList(),
-              onChanged: (val) => setState(() => _selectedSchool = val),
+              items: _levels.map((level) => DropdownMenuItem(value: level, child: Text(level, style: const TextStyle(fontWeight: FontWeight.bold)))).toList(),
+              onChanged: (val) => setState(() => _selectedLevel = val),
             ),
           ),
         ),
@@ -279,58 +374,26 @@ class _EditProfilePageState extends State<EditProfilePage> {
     );
   }
 
-  Widget _buildInput(BuildContext context, String label, TextEditingController controller, IconData icon, {bool readOnly = false, int maxLines = 1, TextInputType? keyboardType}) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = isDark ? Colors.white : const Color(0xFF1E293B);
-    final glassColor = isDark ? Colors.white.withValues(alpha: 0.08) : Colors.black.withValues(alpha: 0.05);
-
+  Widget _buildInput(String label, TextEditingController controller, IconData icon, bool isDark, {int maxLines = 1, TextInputType? keyboardType}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: textColor.withValues(alpha: 0.6), fontSize: 13, fontWeight: FontWeight.bold)),
+        Text(label, style: const TextStyle(color: Colors.grey, fontSize: 12, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        Container(
-          decoration: BoxDecoration(
-            color: readOnly ? Colors.transparent : glassColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: textColor.withValues(alpha: 0.1)),
-          ),
-          child: TextFormField(
-            controller: controller,
-            readOnly: readOnly,
-            maxLines: maxLines,
-            keyboardType: keyboardType,
-            style: TextStyle(color: textColor, fontWeight: FontWeight.w500),
-            validator: (value) => value!.isEmpty && !readOnly ? "Required" : null,
-            decoration: InputDecoration(
-              prefixIcon: Icon(icon, color: textColor.withValues(alpha: 0.4)),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.all(16),
-              isDense: true,
-            ),
+        TextFormField(
+          controller: controller,
+          maxLines: maxLines,
+          keyboardType: keyboardType,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+          decoration: InputDecoration(
+            prefixIcon: Icon(icon, color: const Color(0xFF2563EB), size: 20),
+            filled: true,
+            fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+            contentPadding: const EdgeInsets.all(18),
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildSkeletonLoader(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final baseColor = isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05);
-
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            const SizedBox(height: 40),
-            Container(height: 120, width: 120, decoration: BoxDecoration(color: baseColor, shape: BoxShape.circle)),
-            const SizedBox(height: 40),
-            for(int i=0; i<3; i++)
-              Container(margin: const EdgeInsets.only(bottom: 24), height: 60, width: double.infinity, decoration: BoxDecoration(color: baseColor, borderRadius: BorderRadius.circular(16))),
-          ],
-        ),
-      ),
     );
   }
 }

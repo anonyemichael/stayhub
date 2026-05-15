@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 
 import 'package:stayhub/features/agent/add_hostel_page.dart';
 import 'package:stayhub/features/agent/add_clip_page.dart';
+import 'package:stayhub/services/firestore_service.dart';
 
 class AdminHostelsView extends StatefulWidget {
   final bool isSuper;
@@ -177,11 +178,36 @@ class _HostelList extends StatelessWidget {
                      child: Column(
                        crossAxisAlignment: CrossAxisAlignment.start,
                        children: [
-                         Text(name, 
-                           maxLines: 1,
-                           overflow: TextOverflow.ellipsis,
-                           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF2D3436))
-                         ),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Expanded(
+                                child: Text(name, 
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: Theme.of(context).brightness == Brightness.dark ? Colors.white : const Color(0xFF2D3436))
+                                ),
+                              ),
+                              if (!isPending)
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text("Featured", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey[600])),
+                                    const SizedBox(width: 4),
+                                    SizedBox(
+                                      height: 24,
+                                      width: 40,
+                                      child: Switch(
+                                        value: data['isFeatured'] ?? false, 
+                                        onChanged: (val) => _toggleFeatured(context, docs[index].id, val),
+                                        activeColor: Colors.amber,
+                                        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                            ],
+                          ),
                          const SizedBox(height: 4),
                          Row(children: [
                            Icon(Icons.location_on_rounded, color: Colors.grey[500], size: 14),
@@ -192,31 +218,47 @@ class _HostelList extends StatelessWidget {
                          ]),
                          const SizedBox(height: 16),
                          // Actions
-                         Row(
-                           children: [
-                             if (isPending)
-                               Expanded(
-                                 child: _ActionButton(
-                                   label: "Approve",
-                                   icon: Icons.check_rounded, 
-                                   color: Colors.green, 
-                                   isFilled: true,
-                                   onTap: () => _approveHostel(context, docs[index].id)
-                                 ),
-                               ),
-                             if (isPending && isSuper) const SizedBox(width: 12),
-                             if (isSuper)
-                               Expanded(
-                                 child: _ActionButton(
-                                   label: "Delete",
-                                   icon: Icons.delete_outline_rounded, 
-                                   color: Colors.redAccent, 
-                                   isFilled: false,
-                                   onTap: () => _deleteHostel(context, docs[index].id)
-                                 ),
-                               ),
-                           ],
-                         )
+                          Row(
+                            children: [
+                              if (isPending)
+                                Expanded(
+                                  child: _ActionButton(
+                                    label: "Approve",
+                                    icon: Icons.check_rounded, 
+                                    color: Colors.green, 
+                                    isFilled: true,
+                                    onTap: () => _approveHostel(context, docs[index].id)
+                                  ),
+                                ),
+                              if (isPending) const SizedBox(width: 12),
+                              
+                              // Edit Button
+                              Expanded(
+                                child: _ActionButton(
+                                  label: "Edit",
+                                  icon: Icons.edit_rounded, 
+                                  color: Colors.blueAccent, 
+                                  isFilled: !isPending, // Fill if not pending for emphasis
+                                  onTap: () {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => AddHostelPage(hostelId: docs[index].id, initialData: data)));
+                                  }
+                                ),
+                              ),
+                              
+                              if (isSuper) ...[
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: _ActionButton(
+                                    label: "Delete",
+                                    icon: Icons.delete_outline_rounded, 
+                                    color: Colors.redAccent, 
+                                    isFilled: false,
+                                    onTap: () => _deleteHostel(context, docs[index].id)
+                                  ),
+                                ),
+                              ],
+                            ],
+                          )
                        ],
                      ),
                    )
@@ -240,16 +282,46 @@ class _HostelList extends StatelessWidget {
       builder: (c) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text("Delete Property?"),
-        content: const Text("This action cannot be undone. Are you sure?"),
+        content: const Text("This action will PERMANENTLY remove this hostel AND all related bookings, financial records, chats, and clips. This cannot be undone."),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text("Cancel")),
-          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Delete", style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(c, true), child: const Text("Delete Everything", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
         ],
       )
     );
+    
+    if (confirm == true && context.mounted) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (c) => const Center(child: CircularProgressIndicator()),
+      );
 
-    if (confirm == true) {
-      await FirebaseFirestore.instance.collection('hostels').doc(docId).delete();
+      try {
+        await FirestoreService().deleteHostelCascade(docId);
+        if (context.mounted) {
+          Navigator.pop(context); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel and all related data deleted successfully."), backgroundColor: Colors.redAccent));
+        }
+      } catch (e) {
+        if (context.mounted) {
+          Navigator.pop(context); // Close loading
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error during deletion: $e"), backgroundColor: Colors.black));
+        }
+      }
+    }
+  }
+
+  Future<void> _toggleFeatured(BuildContext context, String docId, bool isFeatured) async {
+    await FirebaseFirestore.instance.collection('hostels').doc(docId).update({'isFeatured': isFeatured});
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(isFeatured ? "Marked as Featured" : "Removed from Featured"),
+          backgroundColor: isFeatured ? Colors.amber[800] : Colors.grey[700],
+          duration: const Duration(seconds: 1),
+        )
+      );
     }
   }
 }

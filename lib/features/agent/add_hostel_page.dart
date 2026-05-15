@@ -1,4 +1,4 @@
-// import 'dart:io' show File;
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -11,6 +11,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:stayhub/services/payment_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:stayhub/services/app_config_service.dart';
+import 'package:stayhub/features/agent/agent_add_rooms_page.dart';
+import 'package:stayhub/core/school_utils.dart';
+import 'package:stayhub/core/widgets/school_logo.dart';
 
 class AddHostelPage extends StatefulWidget {
   final String? hostelId;
@@ -26,22 +29,48 @@ class _AddHostelPageState extends State<AddHostelPage> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _locationController = TextEditingController();
-  final _priceController = TextEditingController();
-  final _capacityController = TextEditingController();
   final _descController = TextEditingController();
-  int _currentStep = 0;
   
-  // Payout Config
+  int _currentStep = 0;
+  final _paymentService = PaymentService();
+  
   final _accountNumberCtrl = TextEditingController();
   final _accountNameCtrl = TextEditingController();
   String? _selectedBankCode;
+  
+  final _ownerAccountNumberCtrl = TextEditingController();
+  final _ownerAccountNameCtrl = TextEditingController();
+  String? _ownerBankCode;
+  String? _ownerSubCodeFromProfile;
+
   List<Map<String, dynamic>> _banks = [];
+  String _partnerType = 'agent';
+  
+  // Schools with Logos
+  List<Map<String, dynamic>> _schoolsWithLogos = [];
+  Map<String, dynamic>? _selectedSchoolData;
 
-  // School Selection
-  String? _selectedSchool;
-  final List<String> _schools = ['UENR', 'CUG', 'UDS'];
+  XFile? _coverImage;
+  final List<XFile> _galleryImages = [];
+  final ImagePicker _picker = ImagePicker();
+  bool _isLoading = false;
+  bool _isGeneratingAI = false;
+  LatLng? _selectedLatLng;
 
-  // Editing State
+  final List<String> _selectedAmenities = [];
+  final List<Map<String, dynamic>> _availableAmenities = [
+    {'name': 'WiFi', 'icon': Icons.wifi_rounded},
+    {'name': 'AC', 'icon': Icons.ac_unit_rounded},
+    {'name': 'Laundry', 'icon': Icons.local_laundry_service_rounded},
+    {'name': 'Security', 'icon': Icons.security_rounded},
+    {'name': 'Kitchen', 'icon': Icons.kitchen_rounded},
+    {'name': 'Water', 'icon': Icons.water_drop_rounded},
+    {'name': 'Gym', 'icon': Icons.fitness_center_rounded},
+    {'name': 'Study Room', 'icon': Icons.menu_book_rounded},
+    {'name': 'Solar Power', 'icon': Icons.wb_sunny_rounded},
+    {'name': 'Cleaning', 'icon': Icons.cleaning_services_rounded},
+  ];
+
   String? _existingCoverUrl;
   List<String> _existingGalleryUrls = [];
 
@@ -49,20 +78,43 @@ class _AddHostelPageState extends State<AddHostelPage> {
   void initState() {
     super.initState();
     _loadBanks();
-    _loadDynamicSchools();
+    _loadSchools();
     if (widget.initialData != null) {
       _loadInitialData();
+    } else {
+      _loadAgentProfile();
     }
   }
 
-  Future<void> _loadDynamicSchools() async {
+  Future<void> _loadSchools() async {
     try {
-      final config = await AppConfigService().getConfig();
-      final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
-      if (dynSchools.isNotEmpty && mounted) {
+      final snapshot = await FirebaseFirestore.instance.collection('schools').get();
+      if (snapshot.docs.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _schoolsWithLogos = snapshot.docs.map((doc) => {
+              'id': doc.id,
+              ...doc.data()
+            }).toList();
+          });
+        }
+      } else {
+        final config = await AppConfigService().getConfig();
+        final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
+        if (mounted) {
+          setState(() {
+            _schoolsWithLogos = dynSchools.map((s) => {'name': s, 'logo_url': null}).toList();
+          });
+        }
+      }
+      
+      if (widget.initialData?['school'] != null && _schoolsWithLogos.isNotEmpty) {
         setState(() {
-          _schools.clear();
-          _schools.addAll(dynSchools);
+          final schoolName = widget.initialData?['school'].toString().trim().toUpperCase();
+          _selectedSchoolData = _schoolsWithLogos.firstWhere(
+            (s) => s['name'].toString().trim().toUpperCase() == schoolName,
+            orElse: () => _schoolsWithLogos.first,
+          );
         });
       }
     } catch (e) {
@@ -70,37 +122,91 @@ class _AddHostelPageState extends State<AddHostelPage> {
     }
   }
 
-  void _loadInitialData() {
-    final data = widget.initialData!;
-    _nameController.text = data['name'] ?? '';
-    _locationController.text = data['location'] ?? '';
-    _priceController.text = (data['price'] ?? '').toString();
-    _capacityController.text = (data['capacity'] ?? '').toString();
-    _descController.text = data['description'] ?? '';
-    _selectedSchool = data['school'];
+  Future<void> _generateAIDescription() async {
+    if (_nameController.text.isEmpty || _selectedSchoolData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel name and school required for AI")));
+      return;
+    }
+
+    setState(() => _isGeneratingAI = true);
+    await Future.delayed(const Duration(seconds: 2));
     
-    // Coordinates
-    if (data['latitude'] != null && data['longitude'] != null) {
-      _selectedLatLng = LatLng(data['latitude'], data['longitude']);
-    }
+    final name = _nameController.text;
+    final school = _selectedSchoolData!['name'];
+    final amenities = _selectedAmenities.isEmpty ? "essential student facilities" : _selectedAmenities.join(", ");
+    
+    final description = "Experience modern student living at $name, located just minutes from $school. Our hostel is equipped with $amenities to ensure a comfortable and productive academic year. Perfect for students who value safety and convenience.";
+    
+    setState(() {
+      _descController.text = description;
+      _isGeneratingAI = false;
+    });
+  }
 
-    // Images
-    _existingCoverUrl = data['image'];
-    if (data['gallery'] != null) {
-      _existingGalleryUrls = List<String>.from(data['gallery']);
-    }
+  Future<void> _addCustomAmenity() async {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Custom Amenity"),
+        content: TextField(controller: controller, decoration: const InputDecoration(hintText: "e.g. Roof Garden")),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text("CANCEL")),
+          TextButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                setState(() => _selectedAmenities.add(controller.text.trim()));
+                Navigator.pop(context);
+              }
+            }, 
+            child: const Text("ADD")
+          ),
+        ],
+      ),
+    );
+  }
 
-    // Amenities
-    if (data['amenities'] != null) {
-      _selectedAmenities.addAll(List<String>.from(data['amenities']));
-    }
+  Future<void> _loadInitialData() async {
+    final data = widget.initialData!;
+    setState(() {
+      _nameController.text = data['fullName'] ?? data['name'] ?? '';
+      _locationController.text = data['location'] ?? '';
+      _descController.text = data['description'] ?? '';
+      _existingCoverUrl = data['image'];
+      _existingGalleryUrls = List<String>.from(data['gallery'] ?? []);
+      
+      final List<dynamic> amenities = data['amenities'] ?? [];
+      _selectedAmenities.addAll(amenities.cast<String>());
+      
+      if (data['latitude'] != null && data['longitude'] != null) {
+        _selectedLatLng = LatLng(data['latitude'], data['longitude']);
+      }
+      
+      _ownerAccountNumberCtrl.text = data['ownerAccountNumber'] ?? '';
+      _ownerAccountNameCtrl.text = data['ownerBusinessName'] ?? '';
+      _ownerBankCode = data['ownerBankCode'];
+      _partnerType = data['partnerType'] ?? 'agent';
+    });
+  }
 
-    // Bank Details (if present)
-    if (data['bank_details'] != null) {
-      final bank = data['bank_details'];
-      _selectedBankCode = bank['bank_code'];
-      _accountNumberCtrl.text = bank['account_number'] ?? '';
-      _accountNameCtrl.text = bank['account_name'] ?? '';
+  Future<void> _loadAgentProfile() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    final doc = await FirebaseFirestore.instance.collection('agents').doc(user.uid).get();
+    if (doc.exists && mounted) {
+      final data = doc.data()!;
+      setState(() {
+        _partnerType = data['partnerType'] ?? 'agent';
+        if (_partnerType == 'owner') {
+          _ownerSubCodeFromProfile = data['paystack_subaccount_code'];
+        }
+        final bank = data['bankDetails'] as Map<String, dynamic>?;
+        if (bank != null) {
+          _selectedBankCode = bank['bankCode'];
+          _accountNumberCtrl.text = bank['accountNumber'] ?? '';
+          _accountNameCtrl.text = bank['accountName'] ?? '';
+        }
+      });
     }
   }
 
@@ -109,183 +215,114 @@ class _AddHostelPageState extends State<AddHostelPage> {
     if (mounted) setState(() => _banks = banks);
   }
 
-  XFile? _coverImage;
-  final List<XFile> _galleryImages = [];
-  bool _isLoading = false;
-  final List<String> _selectedAmenities = [];
-
-  // New variable for coordinate picking
-  LatLng? _selectedLatLng;
-
-  final List<String> _availableAmenities = ['WiFi', 'AC', 'Security', 'Generator', 'Water Flow', 'Kitchen', 'Study Room', 'Gym', 'Laundry', 'TV Room', 'Balcony', 'Parking', 'CCTV', 'Fridge'];
-
   Future<void> _pickCoverImage() async {
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    if (pickedFile != null) {
-      setState(() {
-        _coverImage = pickedFile;
-        _existingCoverUrl = null; // Clear existing if new one picked
-      });
-    }
+    final image = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (image != null) setState(() => _coverImage = image);
   }
 
   Future<void> _pickGalleryImages() async {
-    final picker = ImagePicker();
-    final pickedFiles = await picker.pickMultiImage();
-    if (pickedFiles.isNotEmpty) {
-      setState(() {
-        _galleryImages.addAll(pickedFiles);
-      });
-    }
+    final images = await _picker.pickMultiImage(imageQuality: 70);
+    if (images.isNotEmpty) setState(() => _galleryImages.addAll(images));
   }
 
-  void _removeGalleryImage(int index) {
-    setState(() {
-      _galleryImages.removeAt(index);
-    });
-  }
+  void _removeGalleryImage(int index) => setState(() => _galleryImages.removeAt(index));
+  void _removeExistingGalleryImage(int index) => setState(() => _existingGalleryUrls.removeAt(index));
 
-  void _removeExistingGalleryImage(int index) {
-    setState(() {
-      _existingGalleryUrls.removeAt(index);
-    });
-  }
-
-  void _toggleAmenity(String amenity) {
-    setState(() {
-      if (_selectedAmenities.contains(amenity)) {
-        _selectedAmenities.remove(amenity);
-      } else {
-        _selectedAmenities.add(amenity);
-      }
-    });
-  }
-
-  Future<void> _saveHostel() async {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
-       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("You must be logged in as an agent.")));
-       return;
-    }
-
+  Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    if (_coverImage == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add a cover photo")));
+    if (_coverImage == null && _existingCoverUrl == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Add a cover photo")));
       return;
     }
 
     setState(() => _isLoading = true);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
     try {
-      final cloudinary = CloudinaryService();
-
-      // 1. Upload Cover Image (or use existing)
-      String? coverUrl = _existingCoverUrl;
+      String coverUrl = _existingCoverUrl ?? '';
       if (_coverImage != null) {
-         coverUrl = await cloudinary.uploadProfilePicture(_coverImage!);
+        final url = await CloudinaryService().uploadImage(_coverImage!, folder: 'hostels');
+        if (url != null) coverUrl = url;
       }
-      
-      if (coverUrl == null) throw "Cover image is required.";
 
-      // 2. Upload New Gallery Images & Merge
       List<String> galleryUrls = [..._existingGalleryUrls];
       for (var img in _galleryImages) {
-        final url = await cloudinary.uploadProfilePicture(img);
+        final url = await CloudinaryService().uploadImage(img, folder: 'hostels');
         if (url != null) galleryUrls.add(url);
       }
 
-      // 3. Parse Numeric Fields
-      final double? totalPrice = double.tryParse(_priceController.text.trim());
-      final int? capacity = int.tryParse(_capacityController.text.trim());
-
-      if (totalPrice == null || capacity == null) {
-        throw "Invalid price or capacity format.";
-      }
-
-      // Updated: Fetch Global Commission Percentage (e.g. 2.0 for 2%)
-      // This is deducted from the total price, the student pays exactly 'totalPrice'
-      final double commissionPercent = await FirestoreService().getGlobalCommission();
-      final double platformFee = (totalPrice * commissionPercent) / 100; 
-      final double agentEarnings = totalPrice - platformFee;
-
-      // --- PAYOUT SUBACCOUNT CREATION (Skip if editing and unchanged, or implement update logic) ---
-      // For now, if editing, we only update if subaccount_code is missing or user explicitly changed bank details
-      // Ideally, updating subaccount is complex. Let's assume for basic edit we might generate a new one if details changed.
       
-      String? subAccountCode = widget.initialData?['subaccount_code'];
-      Map<String, dynamic>? bankDetails = widget.initialData?['bank_details'];
+      String? ownerSubCode = widget.initialData?['ownerSubaccountCode'];
 
-      // Only create new subaccount if it's a new hostel OR bank details changed significantly
-      bool bankDetailsChanged = _selectedBankCode != widget.initialData?['bank_details']?['bank_code'] || 
-                                _accountNumberCtrl.text != widget.initialData?['bank_details']?['account_number'];
+      // AUTOMATIC SUBACCOUNT CREATION FOR AGENT LISTINGS
+      if (_partnerType == 'agent') {
+        if (_ownerBankCode == null || _ownerAccountNumberCtrl.text.isEmpty) {
+          throw "Owner bank details are required for agent listings.";
+        }
+        
+        // Only create new one if details changed or missing
+        final bool detailsChanged = widget.initialData?['ownerAccountNumber'] != _ownerAccountNumberCtrl.text || 
+                                    widget.initialData?['ownerBankCode'] != _ownerBankCode;
 
-      if ((subAccountCode == null || bankDetailsChanged) && _selectedBankCode != null && _accountNumberCtrl.text.isNotEmpty) {
-         final businessName = _accountNameCtrl.text.isNotEmpty ? _accountNameCtrl.text : _nameController.text;
-         
-         subAccountCode = await PaymentService().createSubAccount(
-            businessName: businessName, 
-            bankCode: _selectedBankCode!, 
-            accountNumber: _accountNumberCtrl.text.trim(), 
-            percentage: "0",
-            email: user.email ?? "agent_${user.uid}@stayhub.com", 
-            contactName: businessName
-         );
-         
-         bankDetails = {
-           'bank_code': _selectedBankCode,
-           'account_number': _accountNumberCtrl.text.trim(),
-           'account_name': businessName
-         };
+        if (ownerSubCode == null || detailsChanged) {
+          try {
+            ownerSubCode = await _paymentService.createSubAccount(
+              businessName: _ownerAccountNameCtrl.text.trim(),
+              bankCode: _ownerBankCode!,
+              accountNumber: _ownerAccountNumberCtrl.text.trim(),
+              percentage: "0", // Platform takes its share via transactionCharge logic
+              email: user.email ?? "owner@stayhub.app", // Fallback email
+            );
+          } catch (e) {
+            throw "Payout Setup Failed: $e";
+          }
+        }
+      } else if (_partnerType == 'owner') {
+        ownerSubCode ??= _ownerSubCodeFromProfile;
+        if (ownerSubCode == null) {
+          throw "Please set up your Payout Account in your profile first before adding a hostel.";
+        }
       }
 
-      // 4. Save to Firestore
       final hostelData = {
         'name': _nameController.text.trim(),
         'location': _locationController.text.trim(),
-        'latitude': _selectedLatLng?.latitude, 
-        'longitude': _selectedLatLng?.longitude,
-        'price': totalPrice, 
-        'agentPrice': agentEarnings, 
-        'platformFee': platformFee,
-        'school': _selectedSchool,
-        'subaccount_code': subAccountCode, 
-        'bank_details': bankDetails,
-        'capacity': capacity,
         'description': _descController.text.trim(),
-        'contact': user.phoneNumber ?? "", 
         'image': coverUrl,
-        'gallery': galleryUrls, 
+        'gallery': galleryUrls,
         'amenities': _selectedAmenities,
-        'agentId': user.uid,
-        // Status resets to pending on specific edits? Maybe strictly for critical fields. 
-        // For simplicity, let's keep status as is if editing, or 'pending' if new.
-        'status': widget.hostelId != null ? (widget.initialData?['status'] ?? 'pending') : 'pending',
+        'school': _selectedSchoolData?['name'] ?? '',
+        'latitude': _selectedLatLng?.latitude,
+        'longitude': _selectedLatLng?.longitude,
+        'agentId': widget.initialData?['agentId'] ?? user.uid,
+        'status': 'active',
+        'isActive': true,
+        'price': 0, 
+        // 3-Way Split Data
+        'ownerSubaccountCode': ownerSubCode,
+        'ownerBusinessName': _ownerAccountNameCtrl.text.trim(),
+        'ownerAccountNumber': _ownerAccountNumberCtrl.text.trim(),
+        'ownerBankCode': _ownerBankCode,
+        'partnerType': _partnerType, 
       };
       
+      String finalHostelId;
       if (widget.hostelId == null) {
-        // New Listing
-        hostelData['rating'] = 'New';
-        hostelData['ratingCount'] = 0;
-        hostelData['isFeatured'] = false;
         hostelData['createdAt'] = FieldValue.serverTimestamp();
-        await FirestoreService().addHostel(hostelData);
+        finalHostelId = await FirestoreService().addHostel(hostelData);
       } else {
-        // Update Listing
         hostelData['updatedAt'] = FieldValue.serverTimestamp();
         await FirestoreService().updateHostel(widget.hostelId!, hostelData);
+        finalHostelId = widget.hostelId!;
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(widget.hostelId != null ? "Property updated!" : "Hostel listed successfully!")));
-        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel Saved! Now add room prices."), backgroundColor: Colors.blue));
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => AgentAddRoomsPage(hostelId: finalHostelId, initialRooms: widget.initialData?['rooms'])));
       }
     } catch (e) {
-      debugPrint("Add Hostel Error: $e");
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: ${e.toString().replaceAll('Exception:', '')}")));
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -294,72 +331,70 @@ class _AddHostelPageState extends State<AddHostelPage> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFFAFAFA);
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
 
     return Scaffold(
       backgroundColor: bgColor,
       body: SafeArea(
         child: Column(
           children: [
-            _buildCustomAppBar(context, isDark),
+            _buildPremiumHeader(context, isDark, textColor),
             Expanded(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 100),
                 physics: const BouncingScrollPhysics(),
                 child: Form(
                   key: _formKey,
                   child: Column(
                     children: [
-                      if (_currentStep == 0) _buildStep1(isDark),
-                      if (_currentStep == 1) _buildStep2(isDark),
-                      if (_currentStep == 2) _buildStep3(isDark),
+                      if (_currentStep == 0) _buildStepIdentity(isDark, textColor),
+                      if (_currentStep == 1) _buildStepMedia(isDark, textColor),
                     ],
                   ),
                 ),
               ),
             ),
-            _buildBottomControls(context),
+            _buildBottomBar(isDark),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildCustomAppBar(BuildContext context, bool isDark) {
+  Widget _buildPremiumHeader(BuildContext context, bool isDark, Color textColor) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+      padding: const EdgeInsets.all(24),
       child: Row(
         children: [
-          GestureDetector(
-             onTap: () {
-               if (_currentStep > 0) {
-                 setState(() => _currentStep--);
-               } else {
-                 Navigator.pop(context);
-               }
-             },
-             child: Icon(Icons.arrow_back_ios, size: 20, color: isDark ? Colors.white : Colors.black),
+          IconButton(
+            onPressed: () {
+              if (_currentStep > 0) {
+                setState(() => _currentStep--);
+              } else {
+                Navigator.pop(context);
+              }
+            },
+            icon: Icon(Icons.arrow_back_ios_new_rounded, color: textColor, size: 20),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 8),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(widget.hostelId != null ? "Edit Property" : "List New Property", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: isDark ? Colors.white : Colors.black)),
-                const SizedBox(height: 4),
+                Text(widget.hostelId != null ? "Edit Listing" : "List Property", style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+                const SizedBox(height: 12),
                 Row(
-                  children: List.generate(3, (index) {
-                    return Expanded(
-                      child: Container(
-                        height: 4,
-                        margin: const EdgeInsets.only(right: 6),
-                        decoration: BoxDecoration(
-                          color: index <= _currentStep ? Colors.blueAccent : Colors.grey[300],
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+                  children: List.generate(2, (i) => Expanded(
+                    child: Container(
+                      height: 4,
+                      margin: const EdgeInsets.only(right: 6),
+                      decoration: BoxDecoration(
+                        color: i <= _currentStep ? const Color(0xFF2563EB) : (isDark ? Colors.white10 : Colors.grey[200]),
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    );
-                  }),
+                    ),
+                  )),
                 ),
               ],
             ),
@@ -369,390 +404,300 @@ class _AddHostelPageState extends State<AddHostelPage> {
     );
   }
 
-  // --- STEPS ---
-
-  Widget _buildStep1(bool isDark) {
+  Widget _buildStepIdentity(bool isDark, Color textColor) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _headerText("The Basics", "Start with a photo and location.", isDark),
+        _buildSectionTitle("Property Identity", "Start with your property name and school."),
         const SizedBox(height: 24),
+        _buildModernField(_nameController, "Hostel Name", Icons.home_work_rounded, isDark),
+        const SizedBox(height: 20),
+        _buildSchoolSelector(isDark),
+        const SizedBox(height: 20),
         
-        // Huge Cover Picker
-        GestureDetector(
-          onTap: _pickCoverImage,
-          child: Container(
-            height: 220,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white10 : Colors.grey[100],
-              borderRadius: BorderRadius.circular(24),
-              image: _coverImage != null 
-                ? DecorationImage(
-                    image: (kIsWeb 
-                      ? NetworkImage(_coverImage!.path)
-                      : NetworkImage(_coverImage!.path)) as ImageProvider, 
-                    fit: BoxFit.cover
-                  ) 
-                : (_existingCoverUrl != null 
-                   ? DecorationImage(image: CachedNetworkImageProvider(_existingCoverUrl!), fit: BoxFit.cover)
-                   : null),
-              border: Border.all(color: isDark ? Colors.white24 : Colors.grey[300]!, style: (_coverImage == null && _existingCoverUrl == null) ? BorderStyle.solid : BorderStyle.none),
-            ),
-            child: (_coverImage == null && _existingCoverUrl == null)
-                ? Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Icon(Icons.add_a_photo_rounded, size: 48, color: Colors.blueAccent.withOpacity(0.5)),
-                    const SizedBox(height: 12),
-                    Text("Add Cover Photo *", style: TextStyle(color: isDark ? Colors.white60 : Colors.grey[600], fontWeight: FontWeight.bold))
-                  ])
-                : Container(
-                    alignment: Alignment.topRight,
-                    padding: const EdgeInsets.all(12),
-                    child: const CircleAvatar(backgroundColor: Colors.white, radius: 16, child: Icon(Icons.edit, size: 16, color: Colors.black)),
-                  ),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: _selectedLatLng != null ? Colors.green.withOpacity(0.05) : const Color(0xFF2563EB).withOpacity(0.05),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: _selectedLatLng != null ? Colors.green.withOpacity(0.3) : const Color(0xFF2563EB).withOpacity(0.3), width: 2),
           ),
-        ),
-        const SizedBox(height: 24),
-
-        _buildLabel("Property Name", isDark, required: true),
-        TextFormField(controller: _nameController, decoration: _modernInput("e.g. The comfort zone", Icons.apartment, isDark)),
-        const SizedBox(height: 20),
-
-        _buildLabel("University / Campus", isDark, required: true),
-        DropdownButtonFormField<String>(
-          value: _selectedSchool,
-          decoration: _modernInput("Select School", Icons.school, isDark),
-          items: _schools.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
-          onChanged: (val) => setState(() => _selectedSchool = val),
-        ),
-        const SizedBox(height: 20),
-
-        _buildLabel("Location", isDark, required: true),
-        Row(
-          children: [
-            Expanded(child: TextFormField(controller: _locationController, decoration: _modernInput("City/Town", Icons.location_on_outlined, isDark))),
-            const SizedBox(width: 12),
-            GestureDetector(
-              onTap: () async {
-                 final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const LocationPickerPage()));
-                 if (result != null && result is LatLng) {
-                    setState(() => _selectedLatLng = result);
-                    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Location pinned!")));
-                 }
-              },
-              child: Container(
-                height: 56, width: 56,
-                decoration: BoxDecoration(color: _selectedLatLng != null ? Colors.green : Colors.blueAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(16)),
-                child: Icon(Icons.map_rounded, color: _selectedLatLng != null ? Colors.white : Colors.blueAccent),
-              ),
-            )
-          ],
-        ),
-        const SizedBox(height: 20),
-        
-        _buildLabel("Description", isDark, required: true),
-        TextFormField(controller: _descController, maxLines: 4, decoration: _modernInput("Tell students why they should stay here...", Icons.description_outlined, isDark)),
-      ],
-    );
-  }
-
-  Widget _buildStep2(bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _headerText("Details & Amenities", "What makes your place special?", isDark),
-        const SizedBox(height: 24),
-        
-        _buildLabel("Gallery", isDark),
-        SizedBox(
-          height: 110,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
+          child: Row(
             children: [
-               GestureDetector(
-                onTap: _pickGalleryImages,
-                child: Container(
-                  width: 90,
-                  margin: const EdgeInsets.only(right: 12),
-                  decoration: BoxDecoration(color: isDark ? Colors.white10 : Colors.grey[100], borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.blueAccent.withOpacity(0.3))),
-                  child: const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_photo_alternate_rounded, color: Colors.blueAccent), SizedBox(height: 4), Text("Add", style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold))]),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text("Pin Location (Optional)", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: _selectedLatLng != null ? Colors.green : const Color(0xFF2563EB))),
+                    const Text("Students find properties with pins 2x faster.", style: TextStyle(fontSize: 11, color: Colors.grey, fontWeight: FontWeight.w500)),
+                  ],
                 ),
               ),
-
-              // Existing Gallery Images
-              ..._existingGalleryUrls.asMap().entries.map((entry) {
-                return Stack(
-                  children: [
-                     Container(
-                       width: 110, 
-                       margin: const EdgeInsets.only(right: 12), 
-                       decoration: BoxDecoration(
-                         borderRadius: BorderRadius.circular(20), 
-                         image: DecorationImage(
-                           image: CachedNetworkImageProvider(entry.value), 
-                           fit: BoxFit.cover
-                         )
-                        )
-                      ),
-                     Positioned(top: 4, right: 16, child: GestureDetector(onTap: () => _removeExistingGalleryImage(entry.key), child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white))))
-                  ],
-                );
-              }),
-              // New Gallery Images
-              ..._galleryImages.asMap().entries.map((entry) {
-                return Stack(
-                  children: [
-                     Container(
-                       width: 110, 
-                       margin: const EdgeInsets.only(right: 12), 
-                       decoration: BoxDecoration(
-                         borderRadius: BorderRadius.circular(20), 
-                         image: DecorationImage(
-                           image: (kIsWeb 
-                             ? NetworkImage(entry.value.path)
-                             : NetworkImage(entry.value.path)) as ImageProvider, 
-                           fit: BoxFit.cover
-                         )
-                        )
-                      ),
-                     Positioned(top: 4, right: 16, child: GestureDetector(onTap: () => _removeGalleryImage(entry.key), child: const CircleAvatar(radius: 10, backgroundColor: Colors.red, child: Icon(Icons.close, size: 12, color: Colors.white))))
-                  ],
-                );
-              }),
+              _buildMapBtn(),
             ],
           ),
         ),
         const SizedBox(height: 24),
-        
+        _buildModernField(_locationController, "Street Address / Area", Icons.location_on_rounded, isDark),
+        const SizedBox(height: 32),
+
         Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Expanded(
-              flex: 4,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildLabel("Capacity", isDark, required: true),
-                  DropdownButtonFormField<int>(
-                    isExpanded: true,
-                    decoration: _modernInput("", Icons.people_outline, isDark),
-                    initialValue: int.tryParse(_capacityController.text),
-                    hint: const Text("Room Size", style: TextStyle(fontSize: 12)),
-                    items: List.generate(8, (i) => i+1).map((n) => DropdownMenuItem(value: n, child: Text("$n in a room", overflow: TextOverflow.ellipsis))).toList(),
-                    onChanged: (v) => setState(() => _capacityController.text = v.toString()),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 5,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildLabel("Price (Semester)", isDark, required: true),
-                  TextFormField(
-                    controller: _priceController, 
-                    keyboardType: TextInputType.number, 
-                    decoration: _modernInput("₵ Price", Icons.payments_outlined, isDark)
-                  )
-                ],
-              ),
-            ),
+            Text("Amenities", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: textColor)),
+            TextButton.icon(onPressed: _addCustomAmenity, icon: const Icon(Icons.add_rounded, size: 16), label: const Text("Custom", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12))),
           ],
         ),
-        const SizedBox(height: 24),
-        
-        _buildLabel("Amenities", isDark),
+        const SizedBox(height: 12),
         Wrap(
-          spacing: 10, runSpacing: 10,
+          spacing: 8, runSpacing: 8,
           children: _availableAmenities.map((amenity) {
-            final isSelected = _selectedAmenities.contains(amenity);
-            return GestureDetector(
-              onTap: () => _toggleAmenity(amenity),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                decoration: BoxDecoration(
-                  color: isSelected ? Colors.blueAccent : (isDark ? Colors.white10 : Colors.grey[200]),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: isSelected ? Colors.blueAccent : Colors.transparent),
-                ),
-                child: Text(amenity, style: TextStyle(color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87), fontWeight: FontWeight.bold, fontSize: 13)),
-              ),
+            final isSelected = _selectedAmenities.contains(amenity['name']);
+            return FilterChip(
+              label: Text(amenity['name'], style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87))),
+              selected: isSelected,
+              onSelected: (val) {
+                setState(() {
+                  if (val) _selectedAmenities.add(amenity['name']);
+                  else _selectedAmenities.remove(amenity['name']);
+                });
+              },
+              selectedColor: const Color(0xFF2563EB),
+              backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+              avatar: Icon(amenity['icon'], size: 14, color: isSelected ? Colors.white : Colors.grey),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              side: BorderSide(color: isSelected ? Colors.transparent : (isDark ? Colors.white10 : Colors.grey[200]!)),
             );
           }).toList(),
         ),
+        const SizedBox(height: 32),
+
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+             Text("Description", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: textColor)),
+             TextButton.icon(
+                onPressed: _isGeneratingAI ? null : _generateAIDescription,
+                icon: _isGeneratingAI 
+                    ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.blueAccent))
+                    : const Icon(Icons.auto_awesome_rounded, size: 16, color: Colors.blueAccent),
+                label: const Text("✨ Auto-Generate", style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: Colors.blueAccent)),
+                style: TextButton.styleFrom(backgroundColor: Colors.blueAccent.withOpacity(0.05), padding: const EdgeInsets.symmetric(horizontal: 12)),
+              ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        _buildModernField(_descController, "Tell students about the environment...", Icons.description_rounded, isDark, maxLines: 5),
+        const SizedBox(height: 20),
+        
+        if (_partnerType == 'agent') ...[
+          const SizedBox(height: 40),
+          _buildSectionTitle("Owner Payout Setup", "Pick the owner's bank/MoMo for automated payouts."),
+          const SizedBox(height: 20),
+          
+          // Owner Bank Selection
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+            ),
+            child: DropdownButtonHideUnderline(
+              child: DropdownButton<String>(
+                value: _ownerBankCode,
+                hint: Text("Select Owner's Bank", style: TextStyle(color: Colors.grey[500])),
+                isExpanded: true,
+                dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                items: _banks.map((bank) {
+                  return DropdownMenuItem<String>(
+                    value: bank['code'],
+                    child: Text(bank['name'], style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
+                  );
+                }).toList(),
+                onChanged: (val) => setState(() => _ownerBankCode = val),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildModernField(_ownerAccountNumberCtrl, "Owner Account/MoMo Number", Icons.account_balance_wallet_rounded, isDark, isNumber: true),
+          const SizedBox(height: 16),
+          _buildModernField(_ownerAccountNameCtrl, "Owner Account Name (Business/Personal)", Icons.business_rounded, isDark),
+          const SizedBox(height: 8),
+          const Text(
+            "The base price will be sent here automatically. No manual transfers needed.",
+            style: TextStyle(fontSize: 10, color: Colors.blueAccent, fontWeight: FontWeight.bold),
+          ),
+        ],
       ],
     );
   }
 
-  Widget _buildStep3(bool isDark) {
+  Widget _buildStepMedia(bool isDark, Color textColor) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _headerText("Finalize & Payout", "How students reach and pay you.", isDark),
+        _buildSectionTitle("Visual Showcase", "Add high-quality photos to attract students."),
         const SizedBox(height: 24),
-        
-        // Contact Phone Removed as per request (Wallet handles details)
-        
-        Container(
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Colors.blueAccent.withOpacity(0.2)),
-            boxShadow: [BoxShadow(color: Colors.blueAccent.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, 10))],
+        GestureDetector(
+          onTap: _pickCoverImage,
+          child: Container(
+            height: 200, width: double.infinity,
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : Colors.grey[100],
+              borderRadius: BorderRadius.circular(24),
+              image: (_coverImage != null || _existingCoverUrl != null) 
+                  ? DecorationImage(
+                      image: _coverImage != null 
+                          ? FileImage(File(_coverImage!.path)) 
+                          : CachedNetworkImageProvider(_existingCoverUrl!) as ImageProvider, 
+                      fit: BoxFit.cover
+                    ) : null,
+            ),
+            child: (_coverImage == null && _existingCoverUrl == null)
+                ? const Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.add_a_photo_rounded, size: 40, color: Color(0xFF2563EB)), SizedBox(height: 12), Text("Add Cover Photo", style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))])
+                : const Align(alignment: Alignment.topRight, child: Padding(padding: EdgeInsets.all(12), child: CircleAvatar(backgroundColor: Colors.white, radius: 16, child: Icon(Icons.edit, size: 16, color: Colors.black)))),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(children: [
-                Container(padding: const EdgeInsets.all(8), decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(10)), child: const Icon(Icons.account_balance, color: Colors.blueAccent)),
-                const SizedBox(width: 12),
-                const Text("Payout Account", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-              ]),
-              const SizedBox(height: 16),
-              Text("Verified funds will be sent here.", style: TextStyle(color: isDark ? Colors.white54 : Colors.grey[600], fontSize: 13)),
-              const SizedBox(height: 20),
-              
-              DropdownButtonFormField<String>(
-                initialValue: _selectedBankCode,
-                isExpanded: true, // FIX OVERFLOW
-                dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-                decoration: _modernInput("Select Bank", Icons.account_balance_wallet_outlined, isDark),
-                items: _banks.map((bank) {
-                  return DropdownMenuItem(
-                    value: bank['code'].toString(), 
-                    child: Text(bank['name'], overflow: TextOverflow.ellipsis, maxLines: 1), // FIX OVERFLOW
-                  );
-                }).toList(),
-                onChanged: (val) => setState(() => _selectedBankCode = val),
-              ),
-              const SizedBox(height: 16),
-              
-              TextFormField(controller: _accountNumberCtrl, keyboardType: TextInputType.number, decoration: _modernInput("Account Number", Icons.numbers, isDark)),
-              const SizedBox(height: 16),
-              TextFormField(controller: _accountNameCtrl, decoration: _modernInput("Account Name", Icons.person_outline, isDark)),
-            ],
-          ),
+        ),
+        const SizedBox(height: 32),
+        Text("Property Gallery", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 14, color: textColor)),
+        const SizedBox(height: 16),
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, crossAxisSpacing: 12, mainAxisSpacing: 12),
+          itemCount: _galleryImages.length + _existingGalleryUrls.length + 1,
+          itemBuilder: (context, index) {
+            if (index == 0) return _buildAddGalleryBtn(isDark);
+            final actualIndex = index - 1;
+            if (actualIndex < _existingGalleryUrls.length) {
+              return _buildGalleryPreview(_existingGalleryUrls[actualIndex], true, actualIndex);
+            } else {
+              final newIndex = actualIndex - _existingGalleryUrls.length;
+              return _buildGalleryPreview(_galleryImages[newIndex].path, false, newIndex);
+            }
+          },
         ),
       ],
     );
   }
 
-  // --- CONTROLS ---
-
-  Widget _buildBottomControls(BuildContext context) {
+  Widget _buildBottomBar(bool isDark) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(color: isDark ? const Color(0xFF0F172A) : Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 20, offset: const Offset(0, -5))]),
       child: SizedBox(
-        width: double.infinity,
-        height: 56,
+        width: double.infinity, height: 60,
         child: ElevatedButton(
-          onPressed: _isLoading ? null : () {
-             // Step 1 Validation
-             if (_currentStep == 0) {
-               if (_coverImage == null && _existingCoverUrl == null) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please add a cover photo *")));
-                 return;
-               }
-                if (_nameController.text.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter property name *")));
-                  return;
-                }
-                if (_selectedSchool == null) {
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select a school *")));
-                  return;
-                }
-               if (_locationController.text.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter city/town name *")));
-                 return;
-               }
-               if (_selectedLatLng == null) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please pin the location on the map 📍")));
-                 return;
-               }
-               if (_descController.text.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter description *")));
-                 return;
-               }
-               setState(() => _currentStep++);
-               return;
-             }
-
-             // Step 2 Validation
-             if (_currentStep == 1) {
-               if (_capacityController.text.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please select capacity *")));
-                 return;
-               }
-               if (_priceController.text.isEmpty) {
-                 ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Please enter price *")));
-                 return;
-               }
-               setState(() => _currentStep++);
-               return;
-             }
-
-             // Step 3 (Final)
-             if (_currentStep == 2) {
-               _saveHostel();
-             }
-          },
-          style: ElevatedButton.styleFrom(
-             backgroundColor: Colors.blueAccent,
-             foregroundColor: Colors.white,
-             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-             elevation: 0,
-          ),
-          child: _isLoading 
-              ? const SizedBox(height: 24, width: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-              : Text(_currentStep == 2 ? (widget.hostelId != null ? "Save Changes" : "Publish Listing") : "Continue", style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          onPressed: _isLoading ? null : (_currentStep < 1 ? () => setState(() => _currentStep++) : _submit),
+          style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)), elevation: 0),
+          child: _isLoading ? const CircularProgressIndicator(color: Colors.white) : Text(_currentStep < 1 ? "NEXT STEP" : "SAVE & ADD ROOM PRICES", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
         ),
       ),
     );
   }
 
-  // --- STYLING HELPERS ---
-
-  Widget _headerText(String title, String sub, bool isDark) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: isDark ? Colors.white : Colors.black87)),
-        const SizedBox(height: 8),
-        Text(sub, style: TextStyle(fontSize: 14, color: isDark ? Colors.white54 : Colors.grey[600])),
-      ],
-    );
-  }
-
-  Widget _buildLabel(String text, bool isDark, {bool required = false}) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8, left: 4),
-      child: RichText(
-        text: TextSpan(
-          text: text,
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: isDark ? Colors.white70 : Colors.grey[800], fontFamily: 'Roboto'), // Ensure font is consistent
+  Widget _buildSchoolSelector(bool isDark) {
+    return InkWell(
+      onTap: () => _showSchoolPicker(isDark),
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50], borderRadius: BorderRadius.circular(18)),
+        child: Row(
           children: [
-            if (required) const TextSpan(text: " *", style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+            if (_selectedSchoolData != null) ...[
+              SchoolLogo(
+                logoUrl: SchoolUtils.getSchoolLogo(_selectedSchoolData!['name'], {
+                  if (_selectedSchoolData!['logo_url'] != null) _selectedSchoolData!['name'].toString().toUpperCase(): _selectedSchoolData!['logo_url'].toString(),
+                  if (_selectedSchoolData!['logo'] != null) _selectedSchoolData!['name'].toString().toUpperCase(): _selectedSchoolData!['logo'].toString(),
+                }),
+                size: 32,
+                fit: BoxFit.contain,
+              ),
+              const SizedBox(width: 16),
+            ] else ...[
+              const Icon(Icons.school_rounded, color: Color(0xFF2563EB), size: 24),
+              const SizedBox(width: 16),
+            ],
+            Expanded(child: Text(_selectedSchoolData?['name'] ?? "Select Campus / University", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: _selectedSchoolData == null ? Colors.grey : null))),
+            const Icon(Icons.expand_more_rounded, color: Colors.grey),
           ],
         ),
       ),
     );
   }
 
-  InputDecoration _modernInput(String hint, IconData icon, bool isDark) {
-    return InputDecoration(
-       hintText: hint,
-       hintStyle: TextStyle(color: isDark ? Colors.white24 : Colors.grey[400]),
-       prefixIcon: Icon(icon, color: isDark ? Colors.white54 : Colors.grey[500], size: 20),
-       filled: true,
-       fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
-       border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-       enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.blueAccent, width: 1.5)),
-       contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+  void _showSchoolPicker(bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
+      builder: (context) => ListView.builder(
+        padding: const EdgeInsets.all(24),
+        itemCount: _schoolsWithLogos.length,
+        itemBuilder: (context, index) {
+          final school = _schoolsWithLogos[index];
+          final String? logoUrl = SchoolUtils.getSchoolLogo(school['name'], {
+            if (school['logo_url'] != null) school['name'].toString().toUpperCase(): school['logo_url'].toString(),
+            if (school['logo'] != null) school['name'].toString().toUpperCase(): school['logo'].toString(),
+          });
+          return ListTile(
+            leading: SchoolLogo(
+              logoUrl: logoUrl,
+              size: 32,
+              fit: BoxFit.contain,
+            ),
+            title: Text(school['name'], style: const TextStyle(fontWeight: FontWeight.bold)),
+            onTap: () {
+              setState(() => _selectedSchoolData = school);
+              Navigator.pop(context);
+            },
+          );
+        },
+      ),
     );
+  }
+
+  Widget _buildSectionTitle(String title, String subtitle) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text(title, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 24, letterSpacing: -1)),
+      const SizedBox(height: 4),
+      Text(subtitle, style: const TextStyle(color: Colors.grey, fontSize: 13, fontWeight: FontWeight.w500)),
+    ]);
+  }
+
+  Widget _buildModernField(TextEditingController controller, String label, IconData icon, bool isDark, {int maxLines = 1, bool isNumber = false}) {
+    return TextFormField(
+      controller: controller, maxLines: maxLines, keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label, prefixIcon: Icon(icon, color: const Color(0xFF2563EB), size: 20), filled: true,
+        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50], border: OutlineInputBorder(borderRadius: BorderRadius.circular(18), borderSide: BorderSide.none),
+        contentPadding: const EdgeInsets.all(20),
+      ),
+    );
+  }
+
+  Widget _buildMapBtn() {
+    return InkWell(
+      onTap: () async {
+        final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const LocationPickerPage()));
+        if (result != null && result is LatLng) setState(() => _selectedLatLng = result);
+      },
+      child: Container(
+        height: 56, width: 56, decoration: BoxDecoration(color: _selectedLatLng != null ? Colors.green : const Color(0xFF2563EB), borderRadius: BorderRadius.circular(18)),
+        child: Icon(_selectedLatLng != null ? Icons.check_circle_rounded : Icons.map_rounded, color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildAddGalleryBtn(bool isDark) {
+    return InkWell(onTap: _pickGalleryImages, child: Container(decoration: BoxDecoration(color: isDark ? Colors.white10 : Colors.grey[100], borderRadius: BorderRadius.circular(18), border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.2))), child: const Icon(Icons.add_photo_alternate_rounded, color: Color(0xFF2563EB))));
+  }
+
+  Widget _buildGalleryPreview(String path, bool isExisting, int index) {
+    return Stack(children: [Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), image: DecorationImage(image: isExisting ? CachedNetworkImageProvider(path) : FileImage(File(path)) as ImageProvider, fit: BoxFit.cover))), Positioned(top: 4, right: 4, child: GestureDetector(onTap: () => isExisting ? _removeExistingGalleryImage(index) : _removeGalleryImage(index), child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white))))]);
   }
 }

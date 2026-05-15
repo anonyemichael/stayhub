@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:stayhub/core/widgets/school_logo.dart';
+import 'package:stayhub/core/school_utils.dart';
 
 class AdminConfigView extends StatefulWidget {
   const AdminConfigView({super.key});
@@ -20,6 +22,10 @@ class _AdminConfigViewState extends State<AdminConfigView> {
   
   // Controllers for Admin Contact
   final _adminEmailCtrl = TextEditingController(); // Reused for student support email too
+  
+  // Controllers for Dynamic Schools
+  final _newSchoolNameCtrl = TextEditingController();
+  final _newSchoolLogoCtrl = TextEditingController();
   
   // Controllers for Broadcast
   final _broadcastTitleCtrl = TextEditingController();
@@ -276,52 +282,89 @@ class _AdminConfigViewState extends State<AdminConfigView> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(color: Colors.green.withOpacity(0.3))
                 ),
-                child: StreamBuilder<DocumentSnapshot>(
-                   stream: FirebaseFirestore.instance.collection('config').doc('app_config').snapshots(),
-                   builder: (context, snapshot) {
-                     final data = snapshot.data?.data() as Map<String, dynamic>? ?? {};
-                     final schools = List<String>.from(data['available_schools'] ?? ['UENR', 'CUG', 'UDS']);
-                     
-                     return Column(
-                       crossAxisAlignment: CrossAxisAlignment.start,
-                       children: [
-                         Wrap(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    StreamBuilder<QuerySnapshot>(
+                       stream: FirebaseFirestore.instance.collection('schools').orderBy('name').snapshots(),
+                       builder: (context, snapshot) {
+                         if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+                         final docs = snapshot.data!.docs;
+                         return Wrap(
                            spacing: 8,
-                           children: schools.map((s) => Chip(
-                             label: Text(s, style: const TextStyle(fontWeight: FontWeight.bold)),
-                             onDeleted: () async {
-                               schools.remove(s);
-                               await FirebaseFirestore.instance.collection('config').doc('app_config').update({'available_schools': schools});
-                             },
-                             deleteIconColor: Colors.red,
-                           )).toList(),
-                         ),
-                         const SizedBox(height: 16),
-                         Row(
-                           children: [
-                             Expanded(
-                               child: TextField(
-                                 onSubmitted: (val) async {
-                                   if (val.trim().isNotEmpty && !schools.contains(val.trim())) {
-                                     schools.add(val.trim());
-                                     await FirebaseFirestore.instance.collection('config').doc('app_config').update({'available_schools': schools});
-                                   }
-                                 },
-                                 decoration: InputDecoration(
-                                   hintText: "School Name (e.g. KNUST)",
-                                   border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                                   contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                                 ),
+                           runSpacing: 8,
+                           children: docs.map((doc) {
+                             final data = doc.data() as Map<String, dynamic>;
+                             return Chip(
+                               avatar: SchoolLogo(
+                                 logoUrl: SchoolUtils.getSchoolLogo(data['name'] ?? '', {
+                                   if (data['logo_url'] != null) (data['name'] ?? '').toString().toUpperCase(): data['logo_url'].toString(),
+                                 }),
+                                 size: 24,
+                                 fit: BoxFit.contain,
                                ),
-                             ),
-                           ],
-                         ),
-                         const SizedBox(height: 8),
-                         const Text("Tip: Add the school name first, then coordinates via Firebase if map centering is needed.", style: TextStyle(fontSize: 11, color: Colors.grey)),
-                       ],
-                     );
-                   }
-                )
+                               label: Text(data['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
+                               onDeleted: () async {
+                                 await doc.reference.delete();
+                               },
+                               deleteIconColor: Colors.red,
+                             );
+                           }).toList(),
+                         );
+                       }
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: TextField(
+                            controller: _newSchoolNameCtrl,
+                            style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                            decoration: InputDecoration(
+                              hintText: "School (e.g. KNUST)",
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 3,
+                          child: TextField(
+                            controller: _newSchoolLogoCtrl,
+                            style: TextStyle(color: isDark ? Colors.white : Colors.black),
+                            decoration: InputDecoration(
+                              hintText: "Logo URL (https://...)",
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          onPressed: () async {
+                            final name = _newSchoolNameCtrl.text.trim();
+                            final logo = _newSchoolLogoCtrl.text.trim();
+                            if (name.isNotEmpty) {
+                              await FirebaseFirestore.instance.collection('schools').add({
+                                'name': name.toUpperCase(),
+                                'logo_url': logo,
+                                'isActive': true,
+                                'createdAt': FieldValue.serverTimestamp(),
+                              });
+                              _newSchoolNameCtrl.clear();
+                              _newSchoolLogoCtrl.clear();
+                            }
+                          },
+                          icon: const Icon(Icons.add_circle, color: Colors.green, size: 36),
+                        )
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text("Tip: Add the school name first, then paste a valid image URL for its logo.", style: TextStyle(fontSize: 11, color: Colors.grey)),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 30),

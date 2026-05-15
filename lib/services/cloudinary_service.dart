@@ -11,6 +11,24 @@ class CloudinaryService {
 
   CloudinaryService() : _cloudinary = CloudinaryPublic(_cloudName, _uploadPreset, cache: false);
 
+  Future<String?> uploadImage(XFile xFile, {String? folder}) async {
+    try {
+      final bytes = await xFile.readAsBytes();
+      CloudinaryResponse response = await _cloudinary.uploadFile(
+        CloudinaryFile.fromByteData(
+          ByteData.view(bytes.buffer),
+          resourceType: CloudinaryResourceType.Image,
+          identifier: xFile.name,
+          folder: folder,
+        ),
+      );
+      return response.secureUrl;
+    } catch (e) {
+      debugPrint("Cloudinary Image Upload Error: $e");
+      return null;
+    }
+  }
+
   Future<String?> uploadProfilePicture(XFile xFile) async {
     try {
       final bytes = await xFile.readAsBytes();

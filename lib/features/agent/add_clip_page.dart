@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-// import 'dart:io' show File; // Removed for web compatibility
+import 'dart:io' show File;
 import 'package:image_picker/image_picker.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -27,6 +27,12 @@ class _AddClipPageState extends State<AddClipPage> {
   String? _selectedHostelName;
   String? _selectedHostelId;
   
+  // Rooms for the selected hostel
+  List<Map<String, dynamic>> _rooms = [];
+  String? _selectedRoomId;
+  String? _selectedRoomName;
+  
+  
   // NEW: Store selected track info
   MusicTrack? _selectedTrack;
   String _selectedMusicId = 'original';
@@ -50,6 +56,7 @@ class _AddClipPageState extends State<AddClipPage> {
   void dispose() {
     _videoController?.removeListener(_muteListener);
     _videoController?.dispose();
+    _musicPlayer.stop();
     _musicPlayer.dispose();
     _captionController.dispose();
     _roomCapacityController.dispose();
@@ -61,34 +68,63 @@ class _AddClipPageState extends State<AddClipPage> {
     final pickedFile = await picker.pickVideo(source: ImageSource.gallery);
     
     if (pickedFile != null) {
+      // DISPOSE OLD CONTROLLER TO PREVENT MEMORY LEAK
+      if (_videoController != null) {
+        _videoController!.removeListener(_muteListener);
+        await _videoController!.dispose();
+        _videoController = null;
+      }
+
       setState(() {
         _videoFile = pickedFile;
         _isLoading = true; // Temporary loading for initialization
       });
 
-      _videoController = kIsWeb 
-        ? VideoPlayerController.networkUrl(Uri.parse(pickedFile.path))
-        : VideoPlayerController.contentUri(Uri.file(pickedFile.path));
-      // NOTE: using contentUri or networkUrl for file paths to avoid importing dart:io
-      // Actually VideoPlayerController.networkUrl(Uri.file(...)) is safer if contentUri is not available or correct
-      // improved fallback:
-      if (!kIsWeb) {
-         _videoController = VideoPlayerController.networkUrl(Uri.file(pickedFile.path));
-      } else {
-         _videoController = VideoPlayerController.networkUrl(Uri.parse(pickedFile.path));
-      }
+      try {
+        if (kIsWeb) {
+          _videoController = VideoPlayerController.networkUrl(Uri.parse(pickedFile.path));
+        } else {
+          _videoController = VideoPlayerController.file(File(pickedFile.path));
+        }
+          
+        await _videoController!.initialize().timeout(const Duration(seconds: 15));
         
-      _videoController!..initialize().then((_) {
-          if (_selectedMusicId != 'original') {
-            _videoController!.setVolume(0.0);
-            _videoController!.addListener(_muteListener);
+        if (_selectedMusicId != 'original') {
+          _videoController!.setVolume(0.0);
+          _videoController!.addListener(_muteListener);
+          
+          // START MUSIC PLAYER IF ALREADY SELECTED
+          await _musicPlayer.stop();
+          if (_selectedTrack != null) {
+            await _musicPlayer.setSource(UrlSource(_selectedTrack!.url));
+            await _musicPlayer.setReleaseMode(ReleaseMode.loop);
+            await _musicPlayer.resume();
           }
+        }
+        
+        if (mounted) {
           setState(() {
             _isLoading = false;
             _videoController!.play();
             _videoController!.setLooping(true);
           });
-        });
+        }
+      } catch (e) {
+        debugPrint("Video init error: $e");
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            // Keep _videoFile so user can still try to upload it
+            _videoController = null;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Preview unavailable for this format. You can still try to 'Post' it anyway!"),
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+      }
     }
   }
 
@@ -114,7 +150,7 @@ class _AddClipPageState extends State<AddClipPage> {
             _videoController!.addListener(_muteListener);
 
             await _musicPlayer.stop();
-            await _musicPlayer.setSourceUrl(track.url);
+            await _musicPlayer.setSource(UrlSource(track.url));
             await _musicPlayer.setReleaseMode(ReleaseMode.loop);
             await _musicPlayer.resume();
           }
@@ -164,7 +200,7 @@ class _AddClipPageState extends State<AddClipPage> {
       // 2. Save to Firestore 'clips'
       await FirebaseFirestore.instance.collection('clips').add({
         'url': videoUrl,
-        'name': _selectedHostelName, // Display Title
+        'name': _selectedHostelName ?? "Hostel Tour", // Display Title
         'location': _hostelLocation, // Link for Search
         'hostelId': _selectedHostelId,
         'caption': _captionController.text.trim(),
@@ -181,9 +217,12 @@ class _AddClipPageState extends State<AddClipPage> {
         'likeCount': 0,
         'commentCount': 0,
         'timestamp': FieldValue.serverTimestamp(),
-        'rating': 4.5, // Default rating or could be fetched from data['rating'] in onTap
-        'price': _hostelPrice, 
+        'createdAt': DateTime.now().millisecondsSinceEpoch, // Local sync field
+        'rating': 4.5, 
+        'price': _hostelPrice / 1.10, // STORE BASE PRICE (Clips Feed adds 10% dynamically)
         'capacity': int.tryParse(_roomCapacityController.text.trim()) ?? 4,
+        'roomId': _selectedRoomId,
+        'roomName': _selectedRoomName ?? "Standard Room",
       });
 
       if (mounted) {
@@ -191,7 +230,23 @@ class _AddClipPageState extends State<AddClipPage> {
         Navigator.pop(context);
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
+      debugPrint("Clip Upload Error: $e");
+      String errorMsg = e.toString();
+      if (errorMsg.contains("Size") || errorMsg.contains("too large")) {
+        errorMsg = "Video is too large. Please use a shorter clip (under 50MB).";
+      } else if (errorMsg.contains("format")) {
+        errorMsg = "Unsupported video format. Please use MP4 or WebM.";
+      }
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Upload Failed: $errorMsg"),
+            backgroundColor: Colors.redAccent,
+            duration: const Duration(seconds: 5),
+          )
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -203,302 +258,389 @@ class _AddClipPageState extends State<AddClipPage> {
     if (user == null) return const Scaffold(body: Center(child: Text("Auth Required")));
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF101010) : const Color(0xFFF5F7FA);
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final textColor = isDark ? Colors.white : const Color(0xFF0F172A);
 
     return Scaffold(
       backgroundColor: bgColor,
-      appBar: AppBar(
-        title: Text("Post New Clip", style: TextStyle(color: textColor, fontWeight: FontWeight.bold)),
-        backgroundColor: bgColor,
-        elevation: 0,
-        surfaceTintColor: bgColor,
-        iconTheme: IconThemeData(color: textColor),
-      ),
-      body: _isLoading 
-        ? const Center(child: CircularProgressIndicator())
-        : SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Video Preview / Picker
-                GestureDetector(
-                  onTap: () async {
-                    if (_videoFile == null) {
-                       _pickVideo();
-                    } else if (_videoController != null) {
-                       if (_videoController!.value.isPlaying) {
-                          _videoController!.pause();
-                          _musicPlayer.pause();
-                       } else {
-                          // Force sync
-                          if (_selectedMusicId != 'original') {
-                             _musicPlayer.resume();
-                          }
-                          _videoController!.play();
-                       }
-                       setState(() {}); 
-                    }
-                  },
-                  child: Container(
-                    height: 480, // Taller, more immersive
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[900] : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(24),
-                      boxShadow: [
-                         BoxShadow(
-                           color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
-                           blurRadius: 20,
-                           offset: const Offset(0, 10)
-                         )
-                      ]
-                    ),
-                    child: _videoFile == null 
-                        ? Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(20),
-                                decoration: BoxDecoration(
-                                  color: isDark ? Colors.grey[800] : Colors.white,
-                                  shape: BoxShape.circle
-                                ),
-                                child: Icon(Icons.video_call_rounded, size: 40, color: Colors.blue[600]),
-                              ),
-                              const SizedBox(height: 16),
-                              Text("Tap to pick video", style: TextStyle(color: textColor, fontSize: 16, fontWeight: FontWeight.w600)),
-                              Text("Supported formats: MP4, MOV", style: TextStyle(color: isDark ? Colors.grey[500] : Colors.grey[600], fontSize: 13))
-                            ],
-                          )
-                        : (_videoController != null && _videoController!.value.isInitialized)
-                            ? Stack(
-                                alignment: Alignment.center,
-                                children: [
-                                  ClipRRect(
-                                    borderRadius: BorderRadius.circular(24),
-                                    child: AspectRatio(
-                                      aspectRatio: _videoController!.value.aspectRatio,
-                                      child: VideoPlayer(_videoController!),
-                                    ),
-                                  ),
-                                  // Overlay play button if paused
-                                  if (!_videoController!.value.isPlaying)
-                                     Container(
-                                       padding: const EdgeInsets.all(12),
-                                       decoration: BoxDecoration(color: Colors.black.withOpacity(0.5), shape: BoxShape.circle),
-                                       child: const Icon(Icons.play_arrow_rounded, color: Colors.white, size: 40),
-                                     ),
-                                  // Change video button
-                                  Positioned(
-                                    top: 16, right: 16,
-                                    child: IconButton(
-                                      onPressed: _pickVideo,
-                                      style: IconButton.styleFrom(backgroundColor: Colors.black45),
-                                      icon: const Icon(Icons.flip_camera_ios, color: Colors.white),
-                                    ),
-                                  )
-                                ],
-                              )
-                            : const Center(child: CircularProgressIndicator()),
+      body: Stack(
+        children: [
+          // Background Video Preview (TikTok Style)
+          if (_videoFile != null && _videoController != null && _videoController!.value.isInitialized)
+            Positioned.fill(
+              child: FittedBox(
+                fit: BoxFit.cover,
+                child: SizedBox(
+                  width: _videoController!.value.size.width,
+                  height: _videoController!.value.size.height,
+                  child: VideoPlayer(_videoController!),
+                ),
+              ),
+            )
+          else if (_videoFile != null)
+            // SHOW THIS IF VIDEO IS PICKED BUT PREVIEW FAILED (e.g. Tecno/Android Crop issue)
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isDark 
+                      ? [const Color(0xFF1E293B), const Color(0xFF334155)] 
+                      : [const Color(0xFFCBD5E1), const Color(0xFFE2E8F0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
                 ),
-                
-                const SizedBox(height: 32),
-                
-                Text("Details", style: TextStyle(color: textColor, fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 16),
-
-                // Hostel Selector
-                StreamBuilder<QuerySnapshot>(
-                  stream: FirestoreService().getAgentHostels(user.uid),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const LinearProgressIndicator();
-                    
-                    final hostels = snapshot.data!.docs;
-                    if (hostels.isEmpty) return const Text("No hostels found. Add a hostel first.");
-
-                    return _buildStyledDropdown(
-                      label: "Link to Hostel",
-                      value: _selectedHostelId,
-                      items: hostels.map((doc) {
-                        final data = doc.data() as Map<String, dynamic>;
-                        return DropdownMenuItem(
-                          value: doc.id,
-                          child: Text(data['name'] ?? 'Unnamed', style: TextStyle(color: textColor)),
-                          onTap: () {
-                             _selectedHostelName = data['name'];
-                             _hostelLocation = data['location'] ?? data['name'];
-                             _hostelPrice = (data['price'] as num?)?.toDouble() ?? 0.0;
-                             
-                             // Auto-populate capacity from hostel logic
-                             final rawCap = data['capacity'];
-                             if (rawCap != null) {
-                               _roomCapacityController.text = rawCap.toString();
-                             }
-                          },
-                        );
-                      }).toList(),
-                      onChanged: (val) => setState(() => _selectedHostelId = val),
-                      isDark: isDark,
-                      icon: Icons.apartment_rounded
-                    );
-                  },
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check_circle_rounded, size: 60, color: Colors.blue),
+                      ),
+                      const SizedBox(height: 20),
+                      const Text("Video Ready", style: TextStyle(color: Colors.blue, fontSize: 24, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 40),
+                        child: Text(
+                          "This format is ready for upload!\n(Preview limited on this device)",
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: textColor.withOpacity(0.6), fontSize: 14),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-
-                const SizedBox(height: 16),
-
-                // Number of People per Room
-                _buildStyledTextField(
-                  controller: _roomCapacityController,
-                  label: "People per Room",
-                  icon: Icons.people_outline_rounded,
-                  isDark: isDark,
-                  isNumber: true,
+              ),
+            )
+          else
+            Positioned.fill(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: isDark 
+                      ? [const Color(0xFF1E293B), const Color(0xFF0F172A)] 
+                      : [const Color(0xFFE2E8F0), const Color(0xFFF8FAFC)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
                 ),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(Icons.video_camera_back_rounded, size: 80, color: Colors.blue.withOpacity(0.3)),
+                      const SizedBox(height: 24),
+                      Text("Select your masterpiece", style: TextStyle(color: textColor.withOpacity(0.5), fontSize: 16, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
 
-                const SizedBox(height: 16),
+          // Top Bar
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(16, 50, 16, 20),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                ),
+              ),
+              child: Row(
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white, size: 28),
+                  ),
+                  const Spacer(),
+                  const Text("Studio", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 20, letterSpacing: -1)),
+                  const Spacer(),
+                  const SizedBox(width: 48), // Balance
+                ],
+              ),
+            ),
+          ),
 
-                // Music Selector (Custom Picker)
-                GestureDetector(
-                  onTap: _showMusicPicker,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          // Bottom Control Panel
+          Positioned(
+            bottom: 0, left: 0, right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 32, 24, 40),
+              decoration: BoxDecoration(
+                color: isDark ? const Color(0xFF0F172A).withOpacity(0.9) : Colors.white.withOpacity(0.9),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(40)),
+                boxShadow: [
+                  BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 40, offset: const Offset(0, -10))
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Creator Tools: Music & Video
+                  Container(
+                    padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: isDark ? Colors.grey[800]!.withOpacity(0.5) : Colors.white,
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: isDark ? Colors.transparent : Colors.grey[200]!),
+                      color: isDark ? Colors.white.withOpacity(0.03) : Colors.black.withOpacity(0.02),
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(color: isDark ? Colors.white10 : Colors.black12),
                     ),
-                    child: Row(
+                    child: Column(
                       children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: _selectedMusicId == 'original' ? Colors.grey.withOpacity(0.2) : Colors.blue.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(10)
-                          ),
-                          child: Icon(Icons.music_note_rounded, color: _selectedMusicId == 'original' ? Colors.grey : Colors.blue),
+                        Row(
+                          children: [
+                            const Icon(Icons.auto_awesome_rounded, color: Colors.amber, size: 20),
+                            const SizedBox(width: 8),
+                            Text("CREATOR TOOLS", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                          ],
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text("Background Music", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[500], fontSize: 12)), 
-                              const SizedBox(height: 2),
-                              Text(
-                                _selectedMusicName,
-                                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: textColor),
-                                maxLines: 1, overflow: TextOverflow.ellipsis,
+                        const SizedBox(height: 16),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _buildCreatorButton(
+                                onTap: _showMusicPicker,
+                                label: _selectedMusicId == 'original' ? "Add Music" : _selectedMusicName,
+                                icon: Icons.music_note_rounded,
+                                color: const Color(0xFFF43F5E), // Rose
+                                isDark: isDark,
+                                isActive: _selectedMusicId != 'original',
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _buildCreatorButton(
+                                onTap: _pickVideo,
+                                label: _videoFile == null ? "Pick Video" : "Replace",
+                                icon: Icons.videocam_rounded,
+                                color: const Color(0xFF0EA5E9), // Sky
+                                isDark: isDark,
+                                isActive: _videoFile != null,
+                              ),
+                            ),
+                          ],
                         ),
-                        Icon(Icons.arrow_forward_ios_rounded, size: 16, color: isDark ? Colors.grey : Colors.grey[400]),
                       ],
                     ),
                   ),
-                ),
+                  const SizedBox(height: 24),
 
-                const SizedBox(height: 16),
-
-                _buildStyledTextField(
-                  controller: _captionController,
-                  label: "Write a caption...",
-                  icon: Icons.edit_note_rounded,
-                  isDark: isDark,
-                  maxLines: 3,
-                ),
-
-                const SizedBox(height: 40),
-
-                Container(
-                  width: double.infinity,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                       colors: [Color(0xFF2E2AB7), Color(0xFF1BFFFF)],
-                    ),
-                    boxShadow: [
-                      BoxShadow(color: const Color(0xFF2E2AB7).withOpacity(0.3), blurRadius: 15, offset: const Offset(0, 8))
-                    ]
+                  Text("LINK PROPERTY", style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600], fontSize: 11, fontWeight: FontWeight.w900, letterSpacing: 1.2)),
+                  const SizedBox(height: 12),
+                  // Hostel Selector
+                  StreamBuilder<QuerySnapshot>(
+                    stream: FirestoreService().getAgentHostels(user.uid),
+                    builder: (context, snapshot) {
+                      if (!snapshot.hasData) return const LinearProgressIndicator();
+                      final hostels = snapshot.data!.docs;
+                      
+                      return _buildPremiumDropdown(
+                        value: _selectedHostelId,
+                        hint: "Select a Hostel",
+                        icon: Icons.apartment_rounded,
+                        items: hostels.map((doc) {
+                          final data = doc.data() as Map<String, dynamic>;
+                          return DropdownMenuItem(
+                            value: doc.id,
+                            onTap: () {
+                               _selectedHostelName = data['name'];
+                               _hostelLocation = data['location'] ?? data['name'];
+                               final double basePrice = (data['price'] as num?)?.toDouble() ?? 0.0;
+                               _hostelPrice = basePrice * 1.10;
+                               _rooms = List<Map<String, dynamic>>.from(data['rooms'] ?? []);
+                               if (_rooms.isEmpty) {
+                                 final rawCap = data['capacity'];
+                                 if (rawCap != null) _roomCapacityController.text = rawCap.toString();
+                               }
+                            },
+                            child: Text(data['name'] ?? 'Unnamed', style: const TextStyle(fontWeight: FontWeight.bold)),
+                          );
+                        }).toList(),
+                        onChanged: (val) => setState(() {
+                          _selectedHostelId = val;
+                          _selectedRoomId = null;
+                        }),
+                        isDark: isDark,
+                      );
+                    },
                   ),
-                  child: ElevatedButton(
-                    onPressed: _isLoading ? null : _postClip,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent, 
-                      foregroundColor: Colors.white,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))
+
+                  if (_selectedHostelId != null && _rooms.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    _buildPremiumDropdown(
+                      value: _selectedRoomId,
+                      hint: "Select Room Type",
+                      icon: Icons.meeting_room_rounded,
+                        items: _rooms.map<DropdownMenuItem<String>>((room) {
+                          final rName = (room['name'] ?? room['type'] ?? room['roomType'])?.toString() ?? "Standard Room";
+                          
+                          // Smart capacity parsing
+                          int? parsedCap;
+                          if (rName.contains('-in-a-room')) {
+                            parsedCap = int.tryParse(rName.split('-').first);
+                          }
+                          
+                          final rCap = (room['capacity'] ?? room['slots'] ?? room['beds'] ?? parsedCap)?.toString() ?? "4";
+                          
+                          return DropdownMenuItem<String>(
+                            value: room['id']?.toString() ?? rName,
+                            onTap: () {
+                              _selectedRoomName = rName;
+                              _roomCapacityController.text = rCap;
+                              final double basePrice = (room['price'] as num?)?.toDouble() ?? _hostelPrice / 1.10; 
+                              _hostelPrice = basePrice * 1.10; // Apply 10% Commission
+                            },
+                            child: Text("$rName ($rCap in a room)", style: const TextStyle(fontWeight: FontWeight.bold)),
+                          );
+                        }).toList(),
+                      onChanged: (val) => setState(() => _selectedRoomId = val as String?),
+                      isDark: isDark,
                     ),
-                    child: Text("Post Clip", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ],
+
+                  const SizedBox(height: 12),
+                  _buildPremiumTextField(
+                    controller: _captionController,
+                    hint: "Add a catchy caption...",
+                    icon: Icons.notes_rounded,
+                    isDark: isDark,
                   ),
-                ),
-                const SizedBox(height: 40),
-              ],
+
+                  const SizedBox(height: 12),
+                  _buildPremiumTextField(
+                    controller: _roomCapacityController,
+                    hint: "Room Capacity (e.g. 4)",
+                    icon: Icons.groups_rounded,
+                    isDark: isDark,
+                    isNumber: true,
+                  ),
+
+                  const SizedBox(height: 32),
+                  
+                  // Post Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 64,
+                    child: ElevatedButton(
+                      onPressed: (_isLoading || _videoFile == null) ? null : _postClip,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF3B82F6),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      ),
+                      child: _isLoading 
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text("PUBLISH CLIP", style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
+          
+          if (_isLoading)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black54,
+                child: const Center(child: CircularProgressIndicator(color: Colors.white)),
+              ),
+            ),
+        ],
+      ),
     );
   }
 
-  Widget _buildStyledTextField({
-    required TextEditingController controller, 
-    required String label, 
-    IconData? icon, 
-    required bool isDark,
-    bool isNumber = false,
-    int maxLines = 1,
-  }) {
-    final fillColor = isDark ? Colors.grey[800]!.withOpacity(0.5) : Colors.white;
-    return TextFormField(
-      controller: controller,
-      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
-      maxLines: maxLines,
-      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
-        prefixIcon: icon != null ? Icon(icon, color: isDark ? Colors.grey[400] : Colors.blue[700]) : null,
-        filled: true,
-        fillColor: fillColor,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: isDark ? BorderSide.none : BorderSide(color: Colors.grey[200]!)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.blue, width: 1.5)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+  Widget _buildCreatorButton({required VoidCallback onTap, required String label, required IconData icon, required Color color, required bool isDark, bool isActive = false}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 100,
+        decoration: BoxDecoration(
+          color: isActive ? color.withOpacity(0.15) : (isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03)),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isActive ? color.withOpacity(0.3) : Colors.transparent, width: 1.5),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isActive ? color : (isDark ? Colors.white10 : Colors.black12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(icon, color: isActive ? Colors.white : (isDark ? Colors.grey[400] : Colors.grey[600]), size: 24),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              label.length > 12 ? "${label.substring(0, 9)}..." : label,
+              style: TextStyle(
+                color: isActive ? color : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                fontWeight: FontWeight.w800,
+                fontSize: 12,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
       ),
     );
   }
-  
-  Widget _buildStyledDropdown({
-    required String label,
-    required String? value,
-    required List<DropdownMenuItem<String>> items,
-    required Function(String?) onChanged,
-    required bool isDark,
-    required IconData icon,
-  }) {
-     final fillColor = isDark ? Colors.grey[800]!.withOpacity(0.5) : Colors.white;
-     return DropdownButtonFormField<String>(
-      value: value,
-      items: items,
-      onChanged: onChanged,
-      dropdownColor: isDark ? const Color(0xFF2C2C2C) : Colors.white,
-      style: TextStyle(color: isDark ? Colors.white : Colors.black87),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
-        prefixIcon: Icon(icon, color: isDark ? Colors.grey[400] : Colors.blue[700]),
-        filled: true,
-        fillColor: fillColor,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: isDark ? BorderSide.none : BorderSide(color: Colors.grey[200]!)),
-        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: const BorderSide(color: Colors.blue, width: 1.5)),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+
+  Widget _buildPremiumDropdown({required String? value, required String hint, required IconData icon, required List<DropdownMenuItem<String>> items, required Function(String?) onChanged, required bool isDark}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(20),
       ),
-    );    
+      child: DropdownButtonHideUnderline(
+        child: DropdownButtonFormField<String>(
+          value: value,
+          hint: Text(hint, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+          icon: const Icon(Icons.expand_more_rounded, color: Colors.grey),
+          decoration: InputDecoration(
+            border: InputBorder.none,
+            prefixIcon: Icon(icon, color: Colors.blueAccent, size: 20),
+          ),
+          dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          items: items,
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPremiumTextField({required TextEditingController controller, required String hint, required IconData icon, required bool isDark, bool isNumber = false}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withOpacity(0.05) : Colors.black.withOpacity(0.03),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: TextField(
+        controller: controller,
+        keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+        style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+        decoration: InputDecoration(
+          border: InputBorder.none,
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.grey),
+          icon: Icon(icon, color: Colors.blueAccent, size: 20),
+        ),
+      ),
+    );
   }
 }
 
@@ -547,7 +689,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
       setState(() => _playingUrl = null);
     } else {
       await _player.stop(); 
-      await _player.setSourceUrl(url);
+      await _player.setSource(UrlSource(url));
       await _player.resume();
       setState(() => _playingUrl = url);
     }
@@ -555,38 +697,49 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
       ),
       child: Column(
         children: [
           const SizedBox(height: 12),
-          Container(width: 40, height: 4, decoration: BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2))),
+          Container(width: 40, height: 4, decoration: BoxDecoration(color: isDark ? Colors.white10 : Colors.grey[300], borderRadius: BorderRadius.circular(2))),
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: const EdgeInsets.all(24.0),
             child: Row(
               children: [
-                const Text("Select Music", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text("Select Music", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: isDark ? Colors.white : Colors.black, letterSpacing: -0.5)),
                 const Spacer(),
-                IconButton(icon: const Icon(Icons.close), onPressed: () => Navigator.pop(context))
+                IconButton(
+                  icon: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: BoxDecoration(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.05), shape: BoxShape.circle),
+                    child: Icon(Icons.close_rounded, size: 20, color: isDark ? Colors.white70 : Colors.black54)
+                  ), 
+                  onPressed: () => Navigator.pop(context)
+                )
               ],
             ),
           ),
           
           // SEARCH BAR
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
             child: TextField(
                controller: _searchController,
+               style: TextStyle(color: isDark ? Colors.white : Colors.black),
                decoration: InputDecoration(
                  hintText: "Search artist, song, or genre...",
-                 prefixIcon: const Icon(Icons.search),
+                 hintStyle: TextStyle(color: isDark ? Colors.white38 : Colors.grey),
+                 prefixIcon: Icon(Icons.search_rounded, color: isDark ? Colors.white38 : Colors.grey),
                  filled: true,
-                 fillColor: Colors.grey[100],
-                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+                 fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
+                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                  contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                ),
                onSubmitted: _onSearch,
@@ -617,11 +770,11 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                        ListTile(
                          leading: Container(
                            padding: const EdgeInsets.all(10),
-                           decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)),
-                           child: const Icon(Icons.mic, color: Colors.black),
+                           decoration: BoxDecoration(color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100], borderRadius: BorderRadius.circular(12)),
+                           child: Icon(Icons.mic_rounded, color: isDark ? Colors.white70 : Colors.black87),
                          ),
-                         title: const Text("Original Audio"),
-                         subtitle: const Text("Keep video sound"),
+                         title: Text("Original Audio", style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black)),
+                         subtitle: Text("Keep video sound", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey)),
                          onTap: widget.onSelectOriginal,
                        ),
                      if (_searchController.text.isEmpty) const Divider(),
@@ -632,7 +785,7 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                          child: Center(child: Text("No songs found.")),
                        ),
 
-                      ...tracks.map((track) {
+                       ...tracks.map((track) {
                         final isPlaying = _playingUrl == track.url;
                         return ListTile(
                           contentPadding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -644,31 +797,31 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                                 Container(
                                   width: 50, height: 50,
                                   decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: isDark ? Colors.white10 : Colors.grey[200],
+                                    borderRadius: BorderRadius.circular(12),
                                     image: track.coverUrl != null 
                                       ? DecorationImage(image: NetworkImage(track.coverUrl!), fit: BoxFit.cover)
                                       : null,
                                   ),
-                                  child: track.coverUrl == null ? const Icon(Icons.music_note, color: Colors.grey) : null,
+                                  child: track.coverUrl == null ? Icon(Icons.music_note_rounded, color: isDark ? Colors.white38 : Colors.grey) : null,
                                 ),
                                 Container(
                                   width: 50, height: 50,
                                   decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(isPlaying ? 0.5 : 0.2), // Darken for visibility
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: Colors.black.withOpacity(isPlaying ? 0.6 : 0.3), // Darken for visibility
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: Icon(isPlaying ? Icons.stop : Icons.play_arrow, color: Colors.white, size: 28),
+                                  child: Icon(isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded, color: Colors.white, size: 28),
                                 ),
                               ],
                             ),
                           ),
-                          title: Text(track.title, style: const TextStyle(fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text("${track.artist}  •  ${track.genre}", maxLines: 1, overflow: TextOverflow.ellipsis),
+                          title: Text(track.title, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black), maxLines: 1, overflow: TextOverflow.ellipsis),
+                          subtitle: Text("${track.artist}  •  ${track.genre}", style: TextStyle(color: isDark ? Colors.white38 : Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis),
                           trailing: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.black,
-                              foregroundColor: Colors.white,
+                              backgroundColor: isDark ? Colors.white : Colors.black,
+                              foregroundColor: isDark ? Colors.black : Colors.white,
                               shape: const StadiumBorder(),
                               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8)
                             ),
@@ -677,15 +830,15 @@ class _MusicPickerSheetState extends State<_MusicPickerSheet> {
                               await _musicService.saveTrackToDB(track);
                               widget.onSelect(track);
                             },
-                            child: const Text("Select"),
+                            child: const Text("Select", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 12)),
                           ),
                         );
-                     }).toList(),
+                      }),
                   ],
                 );
               },
             ),
-          )
+          ),
         ],
       ),
     );

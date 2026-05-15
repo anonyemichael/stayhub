@@ -196,7 +196,7 @@ class _SplitLogTab extends StatelessWidget {
      final currencyFmt = NumberFormat.currency(symbol: 'GHS ', decimalDigits: 2);
 
      return StreamBuilder<QuerySnapshot>(
-       stream: FirebaseFirestore.instance.collectionGroup('bookings')
+       stream: FirebaseFirestore.instance.collection('bookings')
            .limit(100) // Show last 100 transactions (filter client-side)
            .snapshots(),
        builder: (context, snapshot) {
@@ -215,14 +215,14 @@ class _SplitLogTab extends StatelessWidget {
                DateTime? dateB;
 
                if (dataA != null) {
-                  final val = dataA['bookingDate'];
+                  final val = dataA['createdAt'] ?? dataA['timestamp'] ?? dataA['bookingDate'];
                   if (val is Timestamp) {
                     dateA = val.toDate();
                   } else if (val is String) dateA = DateTime.tryParse(val);
                }
                
                if (dataB != null) {
-                  final val = dataB['bookingDate'];
+                  final val = dataB['createdAt'] ?? dataB['timestamp'] ?? dataB['bookingDate'];
                   if (val is Timestamp) {
                     dateB = val.toDate();
                   } else if (val is String) dateB = DateTime.tryParse(val);
@@ -251,10 +251,11 @@ class _SplitLogTab extends StatelessWidget {
             separatorBuilder: (c, i) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
                final data = paidDocs[index].data() as Map<String, dynamic>;
-               final fee = (data['platformFee'] as num?)?.toDouble() ?? 0.0;
-               final amount = (data['amount'] as num?)?.toDouble() ?? 0.0;
-               final net = amount - fee;
-               final subcode = data['subaccount_code'] ?? 'Unknown';
+               final amounts = data['amounts'] as Map<String, dynamic>?;
+               
+               final fee = (amounts?['commission'] as num?)?.toDouble() ?? 0.0;
+               final base = (amounts?['base'] as num?)?.toDouble() ?? 0.0;
+               final subcode = data['subaccountUsed'] ?? 'Admin Handled';
 
                return Container(
                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -277,8 +278,8 @@ class _SplitLogTab extends StatelessWidget {
                      Column(
                        crossAxisAlignment: CrossAxisAlignment.end,
                        children: [
-                         Text("+ ${currencyFmt.format(fee)}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-                         Text("Agent: ${currencyFmt.format(net)}", style: const TextStyle(fontSize: 10, color: Colors.grey)),
+                         Text("+ ${currencyFmt.format(fee)} (Platform)", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
+                         Text("Hostel Base: ${currencyFmt.format(base)}", style: const TextStyle(fontSize: 10, color: Colors.grey)),
                        ],
                      )
                    ],

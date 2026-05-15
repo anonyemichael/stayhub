@@ -28,7 +28,7 @@ async function handleRequest(request) {
         // Hardcode key here since secrets require extra setup step
         // This is safe because the worker code runs on server
         // Use global variable defined in Cloudflare dashboard
-        const API_KEY = typeof RESEND_API_KEY !== 'undefined' ? RESEND_API_KEY : "re_dFTH3yX8_3conedEf9TF6aLkLsob3oP2W";
+        const API_KEY = typeof RESEND_API_KEY !== 'undefined' ? RESEND_API_KEY : "";
 
         const resendResponse = await fetch("https://api.resend.com/emails", {
             method: "POST",
