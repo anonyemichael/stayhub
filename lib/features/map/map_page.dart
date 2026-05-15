@@ -49,7 +49,6 @@ class _MapPageState extends State<MapPage> with WidgetsBindingObserver {
     'ATU': const LatLng(5.5539, -0.2017),   // Accra Technical University
     'GIJ': const LatLng(5.5587, -0.1915),   // GIJ
     'CASS': const LatLng(6.6732, -1.5670),  // CASS
-    'UENR': const LatLng(7.3400, -2.3276),  // Sunyani
   };
 
   Map<String, dynamic>? _selectedHostel;

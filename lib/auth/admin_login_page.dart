@@ -34,16 +34,14 @@ class _AdminLoginPageState extends State<AdminLoginPage> {
         final adminDoc = await FirebaseFirestore.instance.collection('admins').doc(user.email).get();
 
         if (adminDoc.exists) {
-  if (user != null) {
-    // Trigger browser to save password
-    TextInput.finishAutofillContext();
-    if (mounted) {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const AdminDashboard()),
-      );
-    }
-  }
+          // Trigger browser to save password
+          TextInput.finishAutofillContext();
+          if (mounted) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminDashboard()),
+            );
+          }
         } else {
           // Check for hardcoded super admins as a fallback
           const superAdmins = ['anonyemichael6@gmail.com', 'admin@stayhub.com'];

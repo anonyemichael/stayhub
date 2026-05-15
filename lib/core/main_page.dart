@@ -11,8 +11,6 @@ import 'package:stayhub/features/map/map_page.dart';
 import 'package:stayhub/features/bookings/bookings_page.dart';
 import 'package:stayhub/features/profile/profile_page.dart';
 import 'package:stayhub/services/firestore_service.dart';
-import 'package:stayhub/features/map/map_page.dart';
-import 'package:stayhub/features/clips/clips_page.dart';
 
 class MainPage extends StatefulWidget {
   const MainPage({super.key});
@@ -25,8 +23,6 @@ class _MainPageState extends State<MainPage> {
   int _currentIndex = 0;
   bool _isAdmin = false;
   final List<bool> _pageLoaded = [true, false, false, false, false];
-  final _firestoreService = FirestoreService();
-  final _user = FirebaseAuth.instance.currentUser;
 
   @override
   void initState() {
