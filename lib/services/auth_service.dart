@@ -1,4 +1,5 @@
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:flutter/foundation.dart';
 // For debugPrint
@@ -10,6 +11,7 @@ class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final GoogleSignIn _googleSignIn = GoogleSignIn(
     clientId: kIsWeb ? '33041190550-pa4rcbsoac2b4irda7g0lonl5rpnpuef.apps.googleusercontent.com' : null,
+    serverClientId: kIsWeb ? null : '33041190550-pa4rcbsoac2b4irda7g0lonl5rpnpuef.apps.googleusercontent.com',
   );
 
   // Get current user (useful for checking if logged in)
@@ -53,11 +55,11 @@ class AuthService {
   // ---------------------------------------------------------------------------
   Future<User?> signInWithGoogle() async {
     try {
+      UserCredential userCredential;
       if (kIsWeb) {
         // WEB: Use Firebase Auth's built-in Popup (More reliable for Web)
         final GoogleAuthProvider googleProvider = GoogleAuthProvider();
-        final UserCredential userCredential = await _auth.signInWithPopup(googleProvider);
-        return userCredential.user;
+        userCredential = await _auth.signInWithPopup(googleProvider);
       } else {
         // MOBILE (Android/iOS): Use GoogleSignIn Plugin
         await _googleSignIn.signOut(); // Force account selection
@@ -71,9 +73,34 @@ class AuthService {
           idToken: googleAuth.idToken,
         );
 
-        final userCredential = await _auth.signInWithCredential(credential);
-        return userCredential.user;
+        userCredential = await _auth.signInWithCredential(credential);
       }
+      
+      final user = userCredential.user;
+      if (user != null) {
+        // Automatically sync Google Profile (including photoUrl) to Firestore
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+        if (!userDoc.exists) {
+          await FirebaseFirestore.instance.collection('users').doc(user.uid).set({
+            'name': user.displayName ?? "Student",
+            'email': user.email ?? "",
+            'photoUrl': user.photoURL ?? "",
+            'role': 'student',
+            'createdAt': FieldValue.serverTimestamp(),
+            'isVerified': true,
+          });
+        } else {
+          // If the document exists but is missing the photoUrl, update it.
+          final data = userDoc.data() as Map<String, dynamic>;
+          if ((data['photoUrl'] == null || data['photoUrl'].toString().isEmpty) && user.photoURL != null) {
+            await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+              'photoUrl': user.photoURL,
+              if (data['name'] == null) 'name': user.displayName,
+            });
+          }
+        }
+      }
+      return user;
     } catch (e) {
       debugPrint("Error during Google Sign-In: $e");
       if (e is FirebaseAuthException) {
@@ -88,9 +115,23 @@ class AuthService {
   // ---------------------------------------------------------------------------
   Future<void> signOut() async {
     try {
+      // Clear FCM Token from Database before signing out of Auth
+      final user = _auth.currentUser;
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'fcmToken': FieldValue.delete(),
+        }).catchError((e) => debugPrint("Error clearing token: $e"));
+        
+        // Also clear from agents collection if they are an agent
+        await FirebaseFirestore.instance.collection('agents').doc(user.uid).update({
+          'fcmToken': FieldValue.delete(),
+        }).catchError((e) => null); // Ignore error if not an agent
+      }
+
       await _googleSignIn.signOut();
       await _auth.signOut();
     } catch (e) {
+      debugPrint("SignOut Error: $e");
       throw Exception("Error signing out");
     }
   }

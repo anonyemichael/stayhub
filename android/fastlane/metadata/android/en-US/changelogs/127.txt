@@ -1,0 +1,1 @@
+Fix: Agents can now edit and save room types without errors. Resolved hostel upload and room pricing issues.

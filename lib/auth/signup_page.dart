@@ -9,6 +9,8 @@ import 'package:stayhub/services/auth_service.dart';
 import 'package:stayhub/services/firestore_service.dart';
 import 'package:stayhub/core/main_page.dart';
 import 'package:stayhub/auth/verify_email_page.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:stayhub/features/profile/privacy_page.dart';
 import 'package:stayhub/features/profile/terms_page.dart';
 
@@ -26,6 +28,7 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
 
   bool _loading = false;
   bool _passwordVisible = false;
@@ -62,8 +65,8 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
   }
 
   Future<void> _signUp() async {
-    if (_nameController.text.isEmpty) {
-      _showSnack("Please enter your full name.");
+    if (_nameController.text.isEmpty || _emailController.text.isEmpty || _passwordController.text.isEmpty) {
+      _showSnack("Please fill in all fields.");
       return;
     }
     if (_passwordController.text != _confirmPasswordController.text) {
@@ -89,14 +92,16 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
           'name': _nameController.text.trim(),
           'email': _emailController.text.trim(),
           'role': 'student',
-          'createdAt': DateTime.now(),
+          'createdAt': FieldValue.serverTimestamp(),
           'isVerified': false,
         });
 
         if (mounted) {
+          // Trigger browser to save password
+          TextInput.finishAutofillContext();
+          
           Navigator.pushReplacement(
             context,
-            // Navigate to Verification Page
             MaterialPageRoute(builder: (_) => const VerifyEmailPage()),
           );
         }
@@ -128,7 +133,7 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
         }
       }
     } catch (e) {
-      _showSnack("Google Sign In failed. Please try again.");
+      _showSnack(e.toString().replaceAll('Exception: ', ''));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -148,137 +153,209 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
-    if (MediaQuery.of(context).size.width > 900) {
-      // DESKTOP: SPLIT LAYOUT
-      return Scaffold(
-        backgroundColor: const Color(0xFF0F2027),
-        body: Row(
-          children: [
-            // Left Panel: Brand / Image
-            Expanded(
-              flex: 5,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  Container(
-                    decoration: const BoxDecoration(
-                      image: DecorationImage(
-                        // Vibrant community/student group photo
-                        image: NetworkImage("https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=2670&auto=format&fit=crop"),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.black.withValues(alpha: 0.2), // Lighter at top to show image
-                          Colors.black.withValues(alpha: 0.8), // Darker at bottom for text
-                        ],
-                      ),
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(60),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                         const Text("Join the community.", style: TextStyle(color: Colors.white, fontSize: 48, fontWeight: FontWeight.bold, height: 1.1)),
-                         const SizedBox(height: 20),
-                         Text("Connect with thousands of students finding their perfect stay.", style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 18)),
-                      ],
-                    ),
-                  )
-                ],
-              ),
-            ),
-            // Right Panel: Form
-            Expanded(
-              flex: 4,
-              child: Container(
-                color: const Color(0xFF0F2027),
-                child: Center(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.all(40),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 450),
-                      child: Column(
-                        children: [
-                          // Custom Header for Desktop Form
-                          const Align(alignment: Alignment.centerLeft, child: Text("Create Account", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white))),
-                          const SizedBox(height: 10),
-                          const Align(alignment: Alignment.centerLeft, child: Text("Start your journey with StayHub", style: TextStyle(fontSize: 16, color: Colors.white70))),
-                          const SizedBox(height: 40),
-                          _buildFormContent(),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDesktop = screenWidth > 900;
 
-    // MOBILE: EXISTING LAYOUT
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: BackButton(color: Colors.white, onPressed: () => Navigator.pop(context)),
-      ),
+      backgroundColor: const Color(0xFF0F2027),
       body: Stack(
         children: [
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF0F2027), Color(0xFF203A43), Color(0xFF2C5364)],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
+          // 1. Background
+          Positioned.fill(
+            child: IgnorePointer(
+              child: Opacity(
+                opacity: 0.3,
+                child: Image.network(
+                  "https://images.unsplash.com/photo-1511632765486-a01980e01a18?q=80&w=2670&auto=format&fit=crop",
+                  fit: BoxFit.cover,
+                ),
               ),
             ),
           ),
-          Positioned(
-            top: -100, left: -50,
-            child: _buildAmbientOrb(Colors.blueAccent.withOpacity(0.3)),
-          ),
-          Positioned(
-            bottom: -50, right: -50,
-            child: _buildAmbientOrb(Colors.purpleAccent.withOpacity(0.2)),
-          ),
-          Center(
+
+          // 2. Main Content
+          SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              physics: const BouncingScrollPhysics(),
-              child: Center(
+              child: Align(
+                alignment: Alignment.topCenter,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 450),
-                  child: FadeTransition(
-                    opacity: _fadeAnimation,
-                    child: SlideTransition(
-                      position: _slideAnimation,
-                      child: Column(
-                        children: [
-                           _buildHeader(),
-                           const SizedBox(height: 40),
-                           _buildFormContent(),
-                        ],
+                  child: Column(
+                    children: [
+                      const SizedBox(height: 20),
+                      // Brand Logo
+                      Hero(
+                        tag: 'logo',
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withOpacity(0.05),
+                            border: Border.all(color: Colors.white.withOpacity(0.1)),
+                          ),
+                          child: const CircleAvatar(
+                            radius: 40,
+                            backgroundColor: Colors.transparent,
+                            backgroundImage: AssetImage("assets/logo/logo.png"),
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(height: 32),
+  
+                      _buildHeader(),
+                      const SizedBox(height: 40),
+  
+                      // Form Card
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(28),
+                        child: BackdropFilter(
+                          filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+                          child: Container(
+                            padding: const EdgeInsets.all(32),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.05),
+                              borderRadius: BorderRadius.circular(28),
+                              border: Border.all(color: Colors.white.withOpacity(0.1)),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.2),
+                                  blurRadius: 40,
+                                  offset: const Offset(0, 20),
+                                )
+                              ],
+                            ),
+                            child: AutofillGroup(
+                              child: Form(
+                                key: _formKey,
+                                child: Column(
+                                  children: [
+                                    _buildTextField(controller: _nameController, hint: "Full Name", icon: Icons.person_rounded, autofillHints: [AutofillHints.name], textInputAction: TextInputAction.next),
+                                    const SizedBox(height: 16),
+                                    _buildTextField(controller: _emailController, hint: "Email Address", icon: Icons.email_rounded, autofillHints: [AutofillHints.email, AutofillHints.username], textInputAction: TextInputAction.next),
+                                    const SizedBox(height: 16),
+                                    _buildTextField(
+                                      controller: _passwordController,
+                                      hint: "Password",
+                                      icon: Icons.lock_rounded,
+                                      isPassword: true,
+                                      isVisible: _passwordVisible,
+                                      onVisibilityToggle: () => setState(() => _passwordVisible = !_passwordVisible),
+                                      autofillHints: [AutofillHints.newPassword],
+                                      textInputAction: TextInputAction.next,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    _buildTextField(
+                                      controller: _confirmPasswordController,
+                                      hint: "Confirm Password",
+                                      icon: Icons.lock_clock_rounded,
+                                      isPassword: true,
+                                      isVisible: _confirmPasswordVisible,
+                                      onVisibilityToggle: () => setState(() => _confirmPasswordVisible = !_confirmPasswordVisible),
+                                      autofillHints: [AutofillHints.password],
+                                      textInputAction: TextInputAction.done,
+                                      onSubmitted: (_) => _signUp(),
+                                    ),
+                                const SizedBox(height: 20),
+                                _buildTermsCheckbox(),
+                                const SizedBox(height: 24),
+                                SizedBox(
+                                  width: double.infinity,
+                                  height: 56,
+                                  child: ElevatedButton(
+                                    onPressed: _loading ? null : _signUp,
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.blueAccent,
+                                      foregroundColor: Colors.white,
+                                      elevation: 0,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                    ),
+                                    child: _loading
+                                        ? const CircularProgressIndicator(color: Colors.white)
+                                        : const Text("CREATE ACCOUNT", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, letterSpacing: 1)),
+                                  ),
+                                ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+  
+                      const SizedBox(height: 32),
+                      _buildOrDivider(),
+                      const SizedBox(height: 32),
+  
+                      // Google Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 56,
+                        child: OutlinedButton.icon(
+                          onPressed: _loading ? null : _signInWithGoogle,
+                          icon: const FaIcon(FontAwesomeIcons.google, size: 18),
+                          label: const Text("Continue with Google", style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.white,
+                            side: BorderSide(color: Colors.white.withOpacity(0.15)),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                        ),
+                      ),
+  
+                      const SizedBox(height: 40),
+  
+                      GestureDetector(
+                        onTap: () => Navigator.pop(context),
+                        child: RichText(
+                          text: TextSpan(
+                            text: "Already a student? ",
+                            style: TextStyle(color: Colors.white.withOpacity(0.6)),
+                            children: const [
+                              TextSpan(
+                                text: "Log In",
+                                style: TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 40),
+                    ],
                   ),
                 ),
               ),
+            ),
+          ),
+          
+          // Back Button
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 10,
+            left: 20,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+              onPressed: () => Navigator.pop(context),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildHeader() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          "Join StayHub",
+          style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.white),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          "The largest student community",
+          style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.6)),
+        ),
+      ],
     );
   }
 
@@ -295,41 +372,6 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
           const SizedBox(height: 30),
           _buildLoginLink(),
           const SizedBox(height: 20),
-      ],
-    );
-  }
-
-  Widget _buildHeader() {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(color: Colors.blue.withOpacity(0.5), blurRadius: 40, spreadRadius: 5)
-            ],
-          ),
-          child: const CircleAvatar(
-            radius: 50,
-            backgroundColor: Colors.transparent,
-            backgroundImage: AssetImage("assets/logo/logo.png"),
-          ),
-        ),
-        const SizedBox(height: 25),
-        const Text(
-          "Join StayHub",
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-            letterSpacing: 1,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          "Create an account to start your journey",
-          style: TextStyle(fontSize: 14, color: Colors.white.withOpacity(0.7)),
-        ),
       ],
     );
   }
@@ -521,10 +563,16 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
     bool isPassword = false,
     bool isVisible = false,
     VoidCallback? onVisibilityToggle,
+    Iterable<String>? autofillHints,
+    TextInputAction? textInputAction,
+    ValueChanged<String>? onSubmitted,
   }) {
-    return TextField(
+    return TextFormField(
       controller: controller,
       obscureText: isPassword && !isVisible,
+      autofillHints: autofillHints,
+      onFieldSubmitted: onSubmitted,
+      textInputAction: textInputAction ?? (onSubmitted != null ? TextInputAction.done : TextInputAction.next),
       style: const TextStyle(color: Colors.white),
       cursorColor: Colors.blueAccent,
       decoration: InputDecoration(
@@ -553,3 +601,4 @@ class _SignupPageState extends State<SignupPage> with SingleTickerProviderStateM
     );
   }
 }
+

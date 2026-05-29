@@ -1,252 +1,278 @@
-import 'dart:async';
 import 'dart:convert';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:http/http.dart' as http;
 import 'package:stayhub/core/api_config.dart';
-import 'package:flutter/material.dart';
-import 'package:stayhub/services/paystack_webview.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:stayhub/services/firestore_service.dart';
 
 class PaymentService {
-  
-  // ✅ SECURE IMPLEMENTATION 
-  // Using Render Backend via ApiConfig
-  final String _callbackUrl = "https://stayhub.app/payment-callback";
-
-  // Persistent Client for connection reuse (Faster)
   static final http.Client _client = http.Client();
-  
-  void initialize() {
-     prewarm();
-  }
+  final FirebaseFunctions _functions = FirebaseFunctions.instanceFor(region: 'us-central1');
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirestoreService _firestore = FirestoreService();
 
-  /// Wake up functions to avoid cold starts
-  Future<void> prewarm() async {
+  // ─── CORE SECURE BOOKING FLOW ──────────────────────────────────────────────
+
+  /// STEP 1: Prepare the booking by checking availability and creating a lock.
+  /// returns lockId if successful.
+  Future<String> prepareBooking({
+    required String hostelId,
+    required String roomId,
+    required String checkIn,
+    required String checkOut,
+    String? idempotencyKey,
+  }) async {
+    debugPrint('[PaymentService] prepareBooking for Room: $roomId');
     try {
-      _client.get(Uri.parse(ApiConfig.ping)).timeout(const Duration(seconds: 2));
-    } catch (_) {}
-  }
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint('[PaymentService] No user logged in, aborting prepareBooking');
+        throw 'You must be logged in to book a room.';
+      }
 
-  /// Standard Charge
-  Future<String?> chargeCard({
-    required BuildContext context,
-    required double amount, 
-    required String email,
-    required String reference,
-  }) async {
-     return _launchPayment(
-       context: context, 
-       amount: amount, 
-       email: email, 
-       reference: reference
-     );
-  }
+      // Force-refresh the token to avoid expiry issues
+      await user.getIdToken(true);
 
-  /// Split Payment Charge
-  Future<String?> chargeCardWithSplit({
-    required BuildContext context,
-    required double amount,
-    required String email,
-    required String reference,
-    required String subAccountCode, 
-    double? transactionCharge, 
-  }) async {
-    return _launchPayment(
-      context: context,
-      amount: amount,
-      email: email,
-      reference: reference,
-      subAccountCode: subAccountCode,
-      transactionCharge: transactionCharge,
-    );
-  }
+      debugPrint('[PaymentService] Calling prepareBooking callable...');
+      final result = await _functions.httpsCallable('prepareBooking').call({
+        'hostelId': hostelId,
+        'roomId': roomId,
+        'checkIn': checkIn,
+        'checkOut': checkOut,
+        'idempotencyKey': idempotencyKey,
+      });
 
-  /// Core logic to Init and Launch
-  Future<String?> _launchPayment({
-    required BuildContext context,
-    required double amount,
-    required String email,
-    required String reference,
-    String? subAccountCode,
-    double? transactionCharge,
-  }) async {
-    // 1. Initialize Transaction via Backend
-    // Show Loading? Usually handled by UI calling this.
-    final authUrl = await _initializeTransactionApi(
-      email: email,
-      amount: amount,
-      reference: reference,
-      subAccountCode: subAccountCode,
-      transactionCharge: transactionCharge,
-    );
-
-    if (authUrl == null) {
-      if (context.mounted) _showErrorDialog(context, "Payment Server unreachable. This might be a temporary server delay. Please try again in a few moments.");
-      return null;
-    }
-
-    // 2. Launch (Web vs Mobile)
-    if (kIsWeb) {
-       // Web: Launch in new tab
-       if (await canLaunchUrl(Uri.parse(authUrl))) {
-         await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
-       } else {
-         if (context.mounted) _showErrorDialog(context, "Could not open payment page.");
-         return null;
-       }
-
-       // Web: Manual Verification Dialog
-       if (!context.mounted) return null;
-       final bool? verified = await showDialog<bool>(
-         context: context,
-         barrierDismissible: false,
-         builder: (ctx) => AlertDialog(
-           title: const Text("Completing Payment"),
-           content: const Text("A payment page was opened in a new tab.\n\nDid you complete the payment?"),
-           actions: [
-             TextButton(
-               onPressed: () => Navigator.pop(ctx, false),
-               child: const Text("No, Cancel"),
-             ),
-             TextButton(
-               onPressed: () => Navigator.pop(ctx, true),
-               child: const Text("Yes, I Paid"),
-             ),
-           ],
-         ),
-       );
-
-       if (verified == true) {
-         final isSuccess = await _verifyTransaction(reference);
-         if (isSuccess) return reference;
-         if (context.mounted) _showErrorDialog(context, "Payment verification failed. Please check your bank.");
-       }
-       return null;
-
-    } else {
-      // Mobile: Use WebView
-      if (!context.mounted) return null;
+      final String status = result.data['status'];
       
-      final bool? result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PaystackWebView(
-            authUrl: authUrl, 
-            reference: reference, 
-            callbackUrl: _callbackUrl
-          ),
-        ),
-      );
-  
-      if (result == true) {
-        final verified = await _verifyTransaction(reference);
-        if (verified) {
-           return reference;
+      if (status == 'SUCCESS' || status == 'IDEMPOTENT_RESUME') {
+        final String lockId = result.data['lockId'];
+        debugPrint('[PaymentService] Lock Secured: $lockId');
+        return lockId;
+      }
+
+      if (status == 'ERROR') {
+        final String message = result.data['message'] ?? 'Unknown backend error';
+        debugPrint('[PaymentService] Prepare failed with message: $message');
+        throw message;
+      }
+
+      throw 'Failed to secure room. Status: $status';
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[PaymentService] Prepare failed: ${e.code} - ${e.message} details=${e.details}');
+      throw e.message ?? 'Room is unavailable for these dates.';
+    } catch (e) {
+      debugPrint('[PaymentService] Unexpected prepare error: $e');
+      if (e is String) rethrow;
+      throw 'Could not start booking process. Please try again.';
+    }
+  }
+
+  /// STEP 2: Get the payment portal URL using the lockId.
+  Future<Map<String, dynamic>> getPaymentPortal({
+    String? lockId,
+    String? bookingId,
+    String? deviceInfo,
+    String? studentSex,
+  }) async {
+    debugPrint('[PaymentService] getPaymentPortal lockId=$lockId bookingId=$bookingId');
+    try {
+      final user = _auth.currentUser;
+      if (user == null) {
+        debugPrint('[PaymentService] No user logged in, aborting getPaymentPortal');
+        throw 'You must be logged in to initialize payment.';
+      }
+
+      await user.getIdToken(true);
+
+      final result = await _functions.httpsCallable('getPaymentPortal').call({
+        'bookingId': bookingId,
+      });
+
+      if (result.data['status'] == 'SUCCESS') {
+        return {
+          'status': 'SUCCESS',
+          'authorization_url': result.data['authorization_url'],
+          'access_code': result.data['access_code'],
+          'total_amount': (result.data['total_amount'] as num?)?.toDouble() ?? 0.0,
+          'reference': result.data['reference'],
+        };
+      }
+      
+      final String message = result.data['message'] ?? 'Failed to initialize payment portal.';
+      throw message;
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[PaymentService] Portal failed: ${e.code} - ${e.message}');
+      throw e.message ?? 'Could not initialize payment session.';
+    } catch (e) {
+      if (e is String) rethrow;
+      throw 'Payment system is currently unavailable.';
+    }
+  }
+
+  // ─── UNIFIED LAUNCHER ───────────────────────────────────────────────────────
+
+  /// Returns academic check-in/check-out dates for the given payment period.
+  /// Reads from Firestore config/academicCalendar; falls back to computed dates.
+  Future<Map<String, DateTime>> _getAcademicDates(String paymentPeriod) async {
+    try {
+      final configDoc = await FirebaseFirestore.instance
+          .collection('config')
+          .doc('academicCalendar')
+          .get();
+      if (configDoc.exists) {
+        final data = configDoc.data()!;
+        final now = DateTime.now();
+        String key;
+        if (paymentPeriod == 'year') {
+          key = 'year';
         } else {
-          if (context.mounted) _showErrorDialog(context, "Payment verification could not be confirmed automatically. Please contact support.");
+          // semester1 = Aug–Dec, semester2 = Jan–Jul
+          key = (now.month >= 8) ? 'semester1' : 'semester2';
+        }
+        final pd = data[key] as Map<String, dynamic>?;
+        if (pd != null) {
+          final start = (pd['start'] as Timestamp?)?.toDate();
+          final end = (pd['end'] as Timestamp?)?.toDate();
+          if (start != null && end != null) {
+            return {'checkIn': start, 'checkOut': end};
+          }
         }
       }
-      return null;
+    } catch (_) {}
+
+    // Fallback: compute from standard academic calendar
+    final now = DateTime.now();
+    final baseYear = (now.month >= 8) ? now.year : now.year - 1;
+    if (paymentPeriod == 'year') {
+      return {
+        'checkIn': DateTime(baseYear, 9, 1),
+        'checkOut': DateTime(baseYear + 1, 5, 31),
+      };
+    } else if (now.month >= 8) {
+      return {
+        'checkIn': DateTime(baseYear, 9, 1),
+        'checkOut': DateTime(baseYear, 12, 31),
+      };
+    } else {
+      return {
+        'checkIn': DateTime(now.year, 1, 15),
+        'checkOut': DateTime(now.year, 5, 31),
+      };
     }
   }
 
-  Future<String?> _initializeTransactionApi({
-    required String email,
-    required double amount,
-    required String reference,
-    String? subAccountCode,
-    double? transactionCharge,
+  /// Creates a booking request for the agent to approve.
+  /// Dates are derived from the academic calendar (Firestore config), not the device clock.
+  Future<bool> requestBooking({
+    required String hostelId,
+    required String roomId,
+    required String studentSex,
+    required Map<String, dynamic> hostelData,
+    String paymentPeriod = 'semester',
+    String? roomTypeName,
+    int? capacity,
   }) async {
     try {
-      final int amountKobo = (amount * 100).toInt();
-      final body = {
-          "email": email,
-          "amount": amountKobo,
-          "reference": reference,
-          "metadata": {
-            "cancel_action": "https://stayhub.app/cancel",
-             "custom_fields": [
-                {
-                    "display_name": "Send Receipt",
-                    "variable_name": "send_receipt",
-                    "value": "true"
-                }
-             ]
-          }
-      };
-      
-      if (subAccountCode != null) {
-         body["subaccount"] = subAccountCode;
-         if (transactionCharge != null) {
-            body["transaction_charge"] = (transactionCharge * 100).toInt();
-         }
-      }
+      final user = _auth.currentUser;
+      if (user == null) throw "Authentication required";
 
-      final response = await _client.post(
-        Uri.parse(ApiConfig.initializePayment), 
-        headers: {
-          'Content-Type': 'application/json'
+      final userName = user.displayName ?? "Student";
+      final userEmail = user.email ?? "";
+      final basePrice = double.tryParse(hostelData['price']?.toString() ?? '0') ?? 0.0;
+      final serviceCharge = basePrice * 0.10;
+
+      final String effectiveOwnerId =
+          (hostelData['is_owner_property'] == true ? hostelData['agentId'] : hostelData['ownerId'])?.toString() ?? '';
+      final String effectiveAgentId =
+          (hostelData['is_owner_property'] == true ? null : hostelData['agentId'])?.toString() ?? '';
+
+      final dates = await _getAcademicDates(paymentPeriod);
+
+      final bookingData = {
+        'userId': user.uid,
+        'userName': userName,
+        'userEmail': userEmail,
+        'hostelId': hostelId,
+        'hostelName': hostelData['name'],
+        'hostelImage': hostelData['image'],
+        'imageUrl': hostelData['image'],
+        'location': hostelData['location'] ?? '',
+        'roomId': roomId,
+        'roomType': roomTypeName ?? (roomId == 'legacy' ? 'Standard Room' : roomId),
+        'capacity': capacity,
+        'paymentPeriod': paymentPeriod,
+        'checkIn': dates['checkIn'],
+        'checkOut': dates['checkOut'],
+        'status': 'PENDING_APPROVAL',
+        'studentSex': studentSex,
+        'agentId': effectiveAgentId.isNotEmpty ? effectiveAgentId : hostelData['ownerId'] ?? '',
+        'ownerId': effectiveOwnerId,
+        'price': basePrice + serviceCharge,
+        'amounts': {
+          'base': basePrice,
+          'serviceCharge': serviceCharge,
+          'agentShare': serviceCharge * 0.5,
+          'platformShare': serviceCharge * 0.5,
+          'commission': serviceCharge,
+          'total': basePrice + serviceCharge,
+          'currency': 'GHS',
         },
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30)); // INcreased to 30s to handle cold starts
+        'hostelSnapshot': {
+          'name': hostelData['name'],
+          'address': hostelData['location'],
+          'ownerId': effectiveOwnerId,
+          'agentId': effectiveAgentId.isNotEmpty ? effectiveAgentId : null,
+        },
+        'createdAt': FieldValue.serverTimestamp(),
+      };
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (data['status'] == true) {
-          return data['data']['authorization_url'];
-        }
-      } else {
-        debugPrint("Initialize Failed: ${response.body}");
-      }
+      await _firestore.addBooking(user.uid, bookingData);
+      return true;
     } catch (e) {
-      debugPrint("Error Init: $e");
+      debugPrint('[PaymentService] requestBooking FAILED: $e');
+      rethrow;
     }
-    return null;
   }
-  
-  Future<bool> _verifyTransaction(String reference) async {
+
+
+  /// Verify payment status with the backend.
+  Future<bool> verifyAndSync(String reference, {String? bookingId}) async {
+    debugPrint('[PaymentService] verifyAndSync for Ref: $reference');
+    User? user = _auth.currentUser;
+    for (int i = 0; i < 5 && user == null; i++) {
+      await Future.delayed(const Duration(seconds: 1));
+      user = _auth.currentUser;
+    }
+    if (user == null) {
+      debugPrint('[PaymentService] Verify failed: no user after 5s wait');
+      return false;
+    }
     try {
-      final response = await _client.get(
-        Uri.parse('${ApiConfig.verifyPayment}?reference=$reference'),
-      ).timeout(const Duration(seconds: 5)); // FAST VERIFY (5s)
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data['status'] == true && data['data']['status'] == 'success';
-      }
+      await user.getIdToken(true);
+      final result = await _functions.httpsCallable('verifyBooking').call({
+        'reference': reference,
+      });
+      final status = result.data['status'] as String? ?? '';
+      debugPrint('[PaymentService] verifyAndSync result: $status');
+      return status == 'PAID';
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[PaymentService] verifyAndSync SDK error: ${e.code} — ${e.message}');
+      return false;
     } catch (e) {
-      debugPrint("Verify Error: $e");
+      debugPrint('[PaymentService] verifyAndSync error: $e');
+      return false;
     }
-    return false;
   }
 
+  // ─── UTILITIES ─────────────────────────────────────────────────────────────
 
-  void _showErrorDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Payment Error"),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text("OK"),
-          )
-        ],
-      ),
-    );
-  }
-
-  // ===========================================================================
-  // SUBACCOUNTS & BANKS 
-  // ===========================================================================
-
-  Future<List<Map<String, dynamic>>> getBanks() async {
+  Future<List<Map<String, dynamic>>> getBanks({String country = 'ghana'}) async {
     try {
-      final response = await _client.get(
-        Uri.parse(ApiConfig.getBanks)
-      ).timeout(const Duration(seconds: 20)); // Longer timeout for large list
-      
+      final uri = Uri.parse(ApiConfig.getBanks).replace(queryParameters: {'country': country});
+      final response = await _client.get(uri).timeout(const Duration(seconds: 20));
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (data['status'] == true && data['data'] != null) {
@@ -254,50 +280,92 @@ class PaymentService {
         }
       }
     } catch (e) {
-      debugPrint("Error fetching banks: $e");
+      debugPrint('[PaymentService] getBanks error: $e');
     }
     return [];
   }
 
-  Future<String> createSubAccount({
+  /// Creates a Paystack subaccount for a hostel OWNER on behalf of the agent.
+  /// Unlike [createSubAccount], this does NOT write to Firestore — it simply
+  /// calls `createOwnerSubaccount` and returns the subaccount code so it can
+  /// be stored on the hostel document. The agent's own payment profile is
+  /// completely untouched.
+  Future<({String subaccountCode, bool isVerified, String message})> createOwnerSubaccount({
     required String businessName,
     required String bankCode,
     required String accountNumber,
-    required String percentage, 
-    required String email,
-    String? contactName, 
   }) async {
     try {
-      final response = await _client.post(
-        Uri.parse(ApiConfig.createSubAccount), 
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: jsonEncode({
-          "business_name": businessName,
-          "settlement_bank": bankCode,
-          "account_number": accountNumber,
-          "percentage_charge": double.tryParse(percentage) ?? 0.0,
-          "primary_contact_email": email,
-          "primary_contact_name": contactName,
-        })
-      ).timeout(const Duration(seconds: 15));
+      final user = _auth.currentUser;
+      if (user == null) throw 'Authentication required to create owner subaccount.';
+      await user.getIdToken(true);
 
-      final data = jsonDecode(response.body);
-      
-      // Check for both 200 and 201 (Created)
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        if (data['status'] == true) {
-           return data['data']['subaccount_code'];
-        }
+      final result = await _functions
+          .httpsCallable('createOwnerSubaccount')
+          .call({
+        'business_name': businessName,
+        'bank_code': bankCode,
+        'account_number': accountNumber,
+      });
+
+      if (result.data['status'] == 'success') {
+        return (
+          subaccountCode: result.data['subaccount_code'] as String,
+          isVerified: result.data['is_verified'] as bool? ?? false,
+          message: result.data['message'] as String? ?? 'Owner payout account linked.',
+        );
       }
-      
-      final msg = data['message'] ?? "Unknown error";
-      throw msg;
-
+      throw result.data['message'] ?? 'Failed to create owner subaccount';
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[PaymentService] createOwnerSubaccount callable failed: ${e.code} ${e.message}');
+      throw e.message ?? 'Owner subaccount creation failed';
     } catch (e) {
-       debugPrint("Error creating subaccount: $e");
-       throw e.toString().replaceAll("Exception: ", "");
+      debugPrint('[PaymentService] createOwnerSubaccount error: $e');
+      if (e is String) rethrow;
+      throw 'Could not create owner payout account. Please try again.';
+    }
+  }
+
+  /// Creates a Paystack subaccount via the secure callable Cloud Function.
+  /// Returns a record of (subaccountCode, isVerified).
+  /// The function also deactivates the old subaccount and propagates the new
+  /// code to any owner-type hostel documents this agent owns.
+  Future<({String subaccountCode, bool isVerified, String message})> createSubAccount({
+    required String businessName,
+    required String bankCode,
+    required String accountNumber,
+    required String percentage,
+    required String email,
+  }) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) throw 'Authentication required to create subaccount.';
+      await user.getIdToken(true);
+
+      final result = await _functions
+          .httpsCallable('createPaystackSubaccount')
+          .call({
+        'business_name': businessName,
+        'bank_code': bankCode,
+        'account_number': accountNumber,
+        'role': 'agent',
+      });
+
+      if (result.data['status'] == 'success') {
+        return (
+          subaccountCode: result.data['subaccount_code'] as String,
+          isVerified: result.data['is_verified'] as bool? ?? false,
+          message: result.data['message'] as String? ?? 'Payment account linked.',
+        );
+      }
+      throw result.data['message'] ?? 'Failed to create subaccount';
+    } on FirebaseFunctionsException catch (e) {
+      debugPrint('[PaymentService] createSubAccount callable failed: ${e.code} ${e.message}');
+      throw e.message ?? 'Subaccount creation failed';
+    } catch (e) {
+      debugPrint('[PaymentService] createSubAccount error: $e');
+      if (e is String) rethrow;
+      throw 'Could not create payout account. Please try again.';
     }
   }
 }

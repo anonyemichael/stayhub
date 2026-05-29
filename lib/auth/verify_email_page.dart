@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:pinput/pinput.dart';
 import 'package:stayhub/core/main_page.dart';
 import 'package:stayhub/services/resend_service.dart';
+import 'package:stayhub/features/agent/agent_dashboard.dart';
 
 class VerifyEmailPage extends StatefulWidget {
   const VerifyEmailPage({super.key});
@@ -86,21 +87,31 @@ class _VerifyEmailPageState extends State<VerifyEmailPage> {
     // if (inputOtp == "123456") valid = true; 
     
     if (valid) {
-       // 1. Update Firestore
-       final user = _auth.currentUser;
-       if (user != null) {
-         try {
-           await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
-             'isVerified': true,
-           });
-           
-           if (mounted) {
-             // 2. Navigate to Main Page
-             Navigator.pushReplacement(
-               context,
-               MaterialPageRoute(builder: (_) => const MainPage()),
-             );
-           }
+        final user = _auth.currentUser;
+        if (user != null) {
+          try {
+            // Update in all potential collections to be safe
+            final batch = FirebaseFirestore.instance.batch();
+            
+            batch.update(FirebaseFirestore.instance.collection('users').doc(user.uid), {'isVerified': true});
+            batch.update(FirebaseFirestore.instance.collection('agents').doc(user.uid), {'isVerified': true});
+            
+            // Note: batch.update will fail if document doesn't exist, so we use separate try-catches or checks
+            // But since we want to be fast, we'll just try updating both and ignore failures on missing docs
+            try { await FirebaseFirestore.instance.collection('users').doc(user.uid).update({'isVerified': true}); } catch (_) {}
+            try { await FirebaseFirestore.instance.collection('agents').doc(user.uid).update({'isVerified': true}); } catch (_) {}
+            
+            if (mounted) {
+              // 2. Determine destination based on role
+              final agentDoc = await FirebaseFirestore.instance.collection('agents').doc(user.uid).get();
+              
+              if (mounted) {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(builder: (_) => agentDoc.exists ? const AgentDashboard() : const MainPage()),
+                );
+              }
+            }
          } catch (e) {
            if (mounted) {
              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error updating profile: $e")));

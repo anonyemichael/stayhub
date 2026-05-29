@@ -9,7 +9,10 @@ import 'package:stayhub/core/onboarding_page.dart';
 import 'package:stayhub/auth/verify_email_page.dart';
 import 'package:stayhub/auth/new_password_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stayhub/services/version_service.dart';
+import 'package:stayhub/features/bookings/payment_callback_page.dart';
 import 'dart:async';
+
 import 'dart:math' as math;
 
 class SplashScreen extends StatefulWidget {
@@ -74,11 +77,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     );
 
     // 3. Initialize Deep Links and Start App
+    _mainController.forward(); // Start animation immediately
     _initAndStart();
   }
 
   Future<void> _initAndStart() async {
-    // Check deep links before starting app flow (parallel or sequential)
+    // Check deep links in background
     try {
       final appLinks = AppLinks();
       _pendingDeepLink = await appLinks.getInitialLink();
@@ -91,8 +95,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
   }
 
   Future<void> _startApp() async {
-    _mainController.forward();
-
+    // Animation is already started in initState
+    
     // PERFORMANCE OPTIMIZATION: Reduced forced delay to 500ms.
     final minDelay = Future.delayed(const Duration(milliseconds: 500));
     final navigationTask = _getDestinationScreen();
@@ -102,6 +106,8 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     final destination = results[1] as Widget;
 
     if (mounted) {
+      // Perform background version check
+      VersionService().checkForUpdates(context);
       _navigate(destination);
     }
   }
@@ -110,13 +116,35 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
     // 0. Check Deep Link FIRST
     if (_pendingDeepLink != null) {
       final uri = _pendingDeepLink!;
-      // Check for Password Reset Link
-      // Expected: https://stayhubgh.com/reset-password?mode=resetPassword&oobCode=...
+      debugPrint("SplashScreen: Processing initial deep link: $uri");
+      
+      // 1. Password Reset Link
       if (uri.path.contains('reset-password') || uri.queryParameters.containsKey('oobCode')) {
         final code = uri.queryParameters['oobCode'];
         if (code != null) {
           return NewPasswordPage(code: code, email: uri.queryParameters['email']);
         }
+      }
+
+      // 2. Payment Callback Link
+      if (uri.path.contains('payment-callback') || 
+          uri.toString().contains('success') ||
+          uri.queryParameters.containsKey('trxref') ||
+          uri.queryParameters.containsKey('reference')) {
+        
+        final reference = uri.queryParameters['reference'] ?? uri.queryParameters['trxref'];
+        final bookingId = uri.queryParameters['bookingId'];
+        final userId = uri.queryParameters['userId'];
+        final amountStr = uri.queryParameters['amount'];
+        final double? amount = amountStr != null ? double.tryParse(amountStr) : null;
+
+        debugPrint('SplashScreen: Directing to PaymentCallbackPage for initial link');
+        return PaymentCallbackPage(
+          reference: reference,
+          bookingId: bookingId,
+          userId: userId,
+          amount: amount,
+        );
       }
     }
 
@@ -128,17 +156,41 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
         // Parallelize reload and role checks
         final results = await Future.wait([
           user.reload().timeout(const Duration(seconds: 3)).catchError((_) {}),
-          FirebaseFirestore.instance.collection('admins').doc(user.uid).get(),
-          FirebaseFirestore.instance.collection('agents').doc(user.uid).get(),
+          // Admin doc ID is email based on firestore rules
+          (user.email != null) 
+              ? FirebaseFirestore.instance.collection('admins').doc(user.email).get().timeout(const Duration(seconds: 5)).catchError((_) => null)
+              : Future.value(null),
+          FirebaseFirestore.instance.collection('agents').doc(user.uid).get().timeout(const Duration(seconds: 5)).catchError((_) => null),
         ]);
 
-        if (!user.emailVerified) return const VerifyEmailPage();
+        final adminDoc = results[1] as DocumentSnapshot?;
+        final agentDoc = results[2] as DocumentSnapshot?;
+        
+        // 1. Skip for Admins
+        if (adminDoc != null && adminDoc.exists) return const AgentDashboard(); 
 
-        final adminDoc = results[1] as DocumentSnapshot;
-        if (adminDoc.exists) return const AgentDashboard(); 
+        // 2. Check Verification Status
+        bool isVerified = false;
+        
+        // Check if signed in with Google (Google verifies emails automatically)
+        final isGoogleUser = user.providerData.any((p) => p.providerId == 'google.com');
+        if (isGoogleUser) isVerified = true;
 
-        final agentDoc = results[2] as DocumentSnapshot;
-        if (agentDoc.exists) return const AgentDashboard();
+        if (!isVerified) {
+          // Check Firestore for custom OTP verification status
+          if (agentDoc != null && agentDoc.exists) {
+            isVerified = (agentDoc.data() as Map<String, dynamic>?)?['isVerified'] ?? false;
+          } else {
+            final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get().timeout(const Duration(seconds: 5)).catchError((_) => null as DocumentSnapshot);
+            if (userDoc != null && userDoc.exists) {
+              isVerified = (userDoc.data() as Map<String, dynamic>?)?['isVerified'] ?? false;
+            }
+          }
+        }
+
+        if (!isVerified) return const VerifyEmailPage();
+
+        if (agentDoc != null && agentDoc.exists) return const AgentDashboard();
 
         // Default User
         return const MainPage();
@@ -234,15 +286,15 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                 padding: const EdgeInsets.all(20),
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: Colors.white.withValues(alpha: 0.05),
+                                  color: Colors.white.withOpacity(0.05),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: Colors.black.withValues(alpha: 0.2),
+                                      color: Colors.black.withOpacity(0.2),
                                       blurRadius: 30,
                                       spreadRadius: 10,
                                     ),
                                     BoxShadow(
-                                      color: Colors.white.withValues(alpha: 0.1),
+                                      color: Colors.white.withOpacity(0.1),
                                       blurRadius: 30,
                                       spreadRadius: -5,
                                     ),
@@ -275,7 +327,6 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                     fontWeight: FontWeight.w900,
                                     color: Colors.white,
                                     letterSpacing: 2.0,
-                                    fontFamily: 'Plus Jakarta Sans' // Optional font
                                 ),
                               ),
                               const SizedBox(height: 16),
@@ -284,12 +335,12 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                                 decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.08),
+                                    color: Colors.white.withOpacity(0.08),
                                     borderRadius: BorderRadius.circular(30),
-                                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                                    border: Border.all(color: Colors.white.withOpacity(0.1)),
                                     boxShadow: [
                                       BoxShadow(
-                                        color: Colors.black.withValues(alpha: 0.1),
+                                        color: Colors.black.withOpacity(0.1),
                                         blurRadius: 10,
                                       )
                                     ]
@@ -300,7 +351,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                     SizedBox(
                                         width: 14,
                                         height: 14,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white.withValues(alpha: 0.7))
+                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white.withOpacity(0.7))
                                     ),
                                     const SizedBox(width: 12),
                                     Text(
@@ -308,7 +359,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                                       style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w500,
-                                          color: Colors.white.withValues(alpha: 0.8),
+                                          color: Colors.white.withOpacity(0.8),
                                           letterSpacing: 0.5
                                       ),
                                     ),
@@ -334,7 +385,7 @@ class _SplashScreenState extends State<SplashScreen> with TickerProviderStateMix
                       child: Text(
                         "© 2025 StayHub Inc.",
                         style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.3),
+                          color: Colors.white.withOpacity(0.3),
                           fontSize: 12,
                           letterSpacing: 1.0,
                         ),
@@ -366,7 +417,7 @@ class RadarPainter extends CustomPainter {
       double radius = progress * (size.width / 2);
       double opacity = 1.0 - progress;
       opacity = math.max(0.0, math.min(1.0, opacity));
-      paint.color = Colors.white.withValues(alpha: 0.15);
+      paint.color = Colors.white.withOpacity(0.15);
       canvas.drawCircle(center, radius, paint);
     }
   }

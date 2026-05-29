@@ -17,6 +17,7 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
   final _nameCtrl = TextEditingController();
   final _phoneCtrl = TextEditingController();
   final _hostelCtrl = TextEditingController();
+  String _partnerType = 'agent'; // 'agent' or 'owner'
   bool _isLoading = false;
 
   // A unique name for the temporary Firebase app instance to avoid conflicts.
@@ -62,7 +63,8 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
         'name': _nameCtrl.text.trim(),
         'phone': _phoneCtrl.text.trim(),
         'hostelName': _hostelCtrl.text.trim().isEmpty ? 'Not Assigned' : _hostelCtrl.text.trim(),
-        'role': 'agent',
+        'partnerType': _partnerType,
+        'role': 'agent', // Still uses 'agent' role for dashboard access
         'isVerified': true, 
         'balance': 0.0,
         'hostels': [],
@@ -206,6 +208,27 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
                 _buildInputField(_phoneCtrl, "Phone Number", Icons.phone_outlined, type: TextInputType.phone),
                 const SizedBox(height: 20),
                 _buildInputField(_hostelCtrl, "Assigned Hostel (Optional)", Icons.domain_outlined),
+                const SizedBox(height: 20),
+                
+                // Partner Type Selection
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text("Account Type", style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: Colors.grey)),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildTypeOption("Agent", "agent", Icons.business_center_outlined, isDark),
+                        ),
+                        const SizedBox(width: 15),
+                        Expanded(
+                          child: _buildTypeOption("Owner", "owner", Icons.house_outlined, isDark),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
                 
                 const SizedBox(height: 40),
 
@@ -278,6 +301,30 @@ class _AdminCreateAgentPageState extends State<AdminCreateAgentPage> {
           },
         ),
       ],
+    );
+  }
+
+  Widget _buildTypeOption(String label, String value, IconData icon, bool isDark) {
+    final isSelected = _partnerType == value;
+    final color = isSelected ? Colors.blueAccent : Colors.grey;
+
+    return GestureDetector(
+      onTap: () => setState(() => _partnerType = value),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(
+          color: isSelected ? color.withOpacity(0.1) : (isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100]),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: isSelected ? color : Colors.transparent, width: 2),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 13)),
+          ],
+        ),
+      ),
     );
   }
 }

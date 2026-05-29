@@ -12,7 +12,9 @@ import 'package:stayhub/features/admin/views/admin_bookings_view.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:stayhub/features/admin/views/admin_manage_admins_view.dart';
+import 'package:stayhub/features/admin/views/admin_payouts_view.dart';
 import 'package:stayhub/features/agent/agent_clips_page.dart'; // Added for Content Moderation
+import 'package:stayhub/core/main_page.dart';
 
 class AdminDashboard extends StatefulWidget {
   const AdminDashboard({super.key});
@@ -135,6 +137,8 @@ class _AdminMenuPage extends StatelessWidget {
         padding: const EdgeInsets.all(20),
         children: [
           _menuItem(context, "Earnings & Finance", LineIcons.wallet, Colors.green, isSuper ? const AdminEarningsView() : null),
+
+          _menuItem(context, "Payout Requests", LineIcons.wallet, Colors.orange, isSuper ? const AdminPayoutsView() : null),
           
           // GOD MODE: Allow all admins to manage users (add agents)
           _menuItem(context, "Manage Users", LineIcons.userShield, Colors.red, AdminUsersView(isSuper: isSuper)),
@@ -147,6 +151,14 @@ class _AdminMenuPage extends StatelessWidget {
 
           const Divider(height: 40),
           _menuItem(context, "System Config", LineIcons.cog, Colors.grey, isSuper ? const AdminConfigView() : null),
+
+          _menuItem(
+            context, 
+            "Student Mode", 
+            LineIcons.user, 
+            Colors.blueAccent, 
+            MainPage(), // Navigates to the main student page
+          ),
         ],
       ),
     );

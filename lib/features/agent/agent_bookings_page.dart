@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:stayhub/features/chat/chat_page.dart';
 import 'package:stayhub/services/firestore_service.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:stayhub/services/notification_service.dart';
 
 class AgentBookingsPage extends StatefulWidget {
@@ -16,303 +15,425 @@ class AgentBookingsPage extends StatefulWidget {
 
 class _AgentBookingsPageState extends State<AgentBookingsPage> {
   final _auth = FirebaseAuth.instance;
-  final _currencyFormat = NumberFormat.currency(symbol: 'GHS ', decimalDigits: 2);
+  String _activeFilter = 'PENDING';
 
   @override
   Widget build(BuildContext context) {
     final user = _auth.currentUser;
-    if (user == null) {
-      return const Center(child: Text("Authentication required."));
-    }
-
+    if (user == null) return const Center(child: Text("Authentication required."));
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final bgColor = isDark ? const Color(0xFF121212) : const Color(0xFFF7F9FC);
-    final cardColor = isDark ? const Color(0xFF1E1E1E) : Colors.white;
-    final textColor = isDark ? Colors.white : Colors.black87;
-    final subTextColor = isDark ? Colors.grey[400] : Colors.grey[600];
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF1F5F9);
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
       backgroundColor: bgColor,
       body: StreamBuilder<QuerySnapshot>(
         stream: FirebaseFirestore.instance
-            .collectionGroup('bookings')
-            .where('agentId', isEqualTo: user.uid)
-            .orderBy('bookingDate', descending: true)
+            .collection('bookings')
+            .where(
+              Filter.or(
+                Filter('agentId', isEqualTo: user.uid),
+                Filter('ownerId', isEqualTo: user.uid),
+                Filter('hostelSnapshot.agentId', isEqualTo: user.uid),
+                Filter('hostelSnapshot.ownerId', isEqualTo: user.uid),
+              ),
+            )
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) return _buildErrorState(snapshot.error.toString(), isDark);
+          if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+
+          final allDocs = snapshot.data!.docs;
+          final filteredDocs = allDocs.where((doc) {
+            final data = doc.data() as Map<String, dynamic>;
+            return data['status'] == _activeFilter;
+          }).toList();
+
+          final pendingCount = allDocs.where((d) => (d.data() as Map)['status'] == 'PENDING').length;
+          final approvedCount = allDocs.where((d) => (d.data() as Map)['status'] == 'CONFIRMED').length;
+          final paidCount = allDocs.where((d) => (d.data() as Map)['status'] == 'PAID').length;
+          
+          double earningsRaw = 0.0;
+          for (var d in allDocs) {
+            final data = d.data() as Map<String, dynamic>;
+            if (data['status'] == 'PAID' || data['status'] == 'COMPLETED') {
+              final amounts = data['amounts'] as Map<String, dynamic>?;
+              if (amounts != null) {
+                final base = (amounts['base'] as num? ?? 0.0).toDouble();
+                final totalComm = (amounts['commission'] as num? ?? 0.0).toDouble();
+
+                final isAgent = (data['agentId'] ?? data['hostelSnapshot']?['agentId']) == user.uid;
+                final isOwner = (data['ownerId'] ?? data['hostelSnapshot']?['ownerId']) == user.uid;
+
+                if (isAgent) earningsRaw += totalComm * 0.5;
+                if (isOwner) earningsRaw += base;
+              } else {
+                // Legacy fallback
+                earningsRaw += (data['agentPrice'] as num? ?? 0.0).toDouble();
+              }
+            }
           }
-          if (snapshot.hasError) {
-            return Center(child: Text("Error: ${snapshot.error}", style: TextStyle(color: textColor)));
-          }
 
-          final docs = snapshot.data?.docs ?? [];
+          return CustomScrollView(
+            physics: const BouncingScrollPhysics(),
+            slivers: [
+              const SliverToBoxAdapter(child: SizedBox(height: 110)),
 
-          if (docs.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.bookmark_border_rounded, size: 80, color: isDark ? Colors.grey[700] : Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text("No bookings for your hostels yet.", style: TextStyle(color: subTextColor)),
-                ],
-              ),
-            );
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.all(20),
-            itemCount: docs.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 20),
-            itemBuilder: (context, index) {
-              final data = docs[index].data() as Map<String, dynamic>;
-              final bookingDate = (data['bookingDate'] as Timestamp?)?.toDate() ?? DateTime.now();
-              final status = data['status'] ?? 'PENDING';
-              final isPending = status == 'PENDING';
-              final bookingId = docs[index].id;
-              final userId = data['userId']; 
-
-              return Container(
-                decoration: BoxDecoration(
-                  color: cardColor,
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                  border: isPending ? Border.all(color: Colors.orange.withOpacity(0.5), width: 1.5) : null,
-                ),
+              // 2. STATS (Responsive Grid)
+              SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      return GridView.count(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        crossAxisCount: 2,
+                        childAspectRatio: 1.5,
+                        mainAxisSpacing: 12,
+                        crossAxisSpacing: 12,
                         children: [
-                          Expanded(
-                            child: Text(
-                              data['hostelName'] ?? 'Hostel',
-                              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: textColor),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                            decoration: BoxDecoration(
-                              color: isPending ? Colors.orange.withOpacity(0.1) : Colors.green.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: isPending ? Colors.orange.withOpacity(0.3) : Colors.green.withOpacity(0.3))
-                            ),
-                            child: Text(status, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: isPending ? Colors.orange : Colors.green)),
-                          ),
+                          _buildStatBox("PENDING", pendingCount.toString(), Colors.orange),
+                          _buildStatBox("CONFIRMED", approvedCount.toString(), Colors.green),
+                          _buildStatBox("PAID", paidCount.toString(), const Color(0xFF10B981)),
+                          _buildStatBox("REVENUE", "₵${earningsRaw.toStringAsFixed(0)}", Colors.blueAccent),
                         ],
-                      ),
-                      const SizedBox(height: 16),
-                      Divider(color: isDark ? Colors.grey[800] : Colors.grey[100], height: 1),
-                      const SizedBox(height: 16),
-                      
-                      _buildInfoRow(Icons.person, "Student", data['userName'] ?? 'N/A', textColor, subTextColor),
-                      const SizedBox(height: 10),
-                      _buildInfoRow(Icons.wc, "Sex", data['studentSex'] ?? 'Not Specified', textColor, subTextColor), 
-                      const SizedBox(height: 10),
-                      _buildInfoRow(Icons.tag, "Ticket ID", bookingId, textColor, subTextColor, isMono: true),
-                      
-                      const SizedBox(height: 20),
-                      
-                      if (isPending)
-                        Column(
-                          children: [
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildActionButton(
-                                    context, 
-                                    label: "Chat", 
-                                    icon: Icons.chat_bubble_outline, 
-                                    color: Colors.blue, 
-                                    onTap: () => _openChat(context, userId, data)
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: _buildActionButton(
-                                    context, 
-                                    label: "Request", 
-                                    icon: Icons.payments_outlined, 
-                                    color: Colors.purple, 
-                                    onTap: () => Share.share("Hello ${data['userName']}, please pay GHS ${data['price']} via Mobile Money to 0551234567 to confirm your booking at ${data['hostelName']}. Booking ID: $bookingId")
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: _buildActionButton(
-                                    context, 
-                                    label: "Reject", 
-                                    icon: Icons.close, 
-                                    color: Colors.red, 
-                                    isOutlined: true,
-                                    onTap: () async {
-                                      await FirebaseFirestore.instance.collection('users').doc(userId).collection('bookings').doc(bookingId).update({'status': 'REJECTED'});
-                                    }
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: ElevatedButton(
-                                    onPressed: () async {
-                                      await FirestoreService().updateBookingStatus(userId, bookingId, 'CONFIRMED');
-                                      // Notify Agent locally as confirmation
-                                      await NotificationService().showNotification(
-                                        title: 'Booking Approved', 
-                                        body: 'You have confirmed the booking for ${data['userName']}'
-                                      );
-                                    },
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: Colors.green,
-                                      padding: const EdgeInsets.symmetric(vertical: 12),
-                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                                      elevation: 0
-                                    ),
-                                    child: const Text("Approve", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
-                        )
-                      else
-                        Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: isDark ? Colors.grey[850] : Colors.grey[50],
-                            borderRadius: BorderRadius.circular(16)
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                               Column(
-                                 crossAxisAlignment: CrossAxisAlignment.start,
-                                 children: [
-                                   Text("Agent Earnings", style: TextStyle(fontSize: 10, color: subTextColor, fontWeight: FontWeight.bold)),
-                                   Text(
-                                    _currencyFormat.format(data['agentPrice'] ?? (data['price'] ?? 0) - 50),
-                                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.green, fontSize: 16),
-                                  ),
-                                 ],
-                               ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                children: [
-                                  Text("Total Paid", style: TextStyle(fontSize: 10, color: subTextColor, fontWeight: FontWeight.bold)),
-                                  Text(
-                                    _currencyFormat.format(data['price'] ?? 0.0),
-                                    style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).primaryColor, fontSize: 16),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                    ],
+                      );
+                    }
                   ),
                 ),
-              );
-            },
+              ),
+
+              // 3. FILTERS (Glass Tabs)
+              SliverToBoxAdapter(
+                child: Container(
+                  height: 80,
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    children: ['PENDING', 'CONFIRMED', 'PAID', 'REJECTED', 'COMPLETED'].map((filter) {
+                      final isSelected = _activeFilter == filter;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 12),
+                        child: GestureDetector(
+                          onTap: () => setState(() => _activeFilter = filter),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            decoration: BoxDecoration(
+                              color: isSelected ? const Color(0xFF2563EB) : Colors.white,
+                              borderRadius: BorderRadius.circular(20),
+                              boxShadow: isSelected ? [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))] : null,
+                            ),
+                            child: Center(
+                              child: Text(
+                                filter, 
+                                style: TextStyle(
+                                  color: isSelected ? Colors.white : Colors.grey[500], 
+                                  fontWeight: FontWeight.w900, 
+                                  fontSize: 11
+                                )
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+
+              // 4. LISTING
+              if (filteredDocs.isEmpty)
+                SliverFillRemaining(child: _buildEmptyState(isDark))
+              else
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
+                  sliver: SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, index) {
+                        final data = filteredDocs[index].data() as Map<String, dynamic>;
+                        return _buildCleanBookingCard(context, data, filteredDocs[index].id, isDark);
+                      },
+                      childCount: filteredDocs.length,
+                    ),
+                  ),
+                ),
+            ],
           );
         },
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, Color textColor, Color? subTextColor, {bool isMono = false}) {
-    return Row(
-      children: [
-        Icon(icon, size: 16, color: subTextColor),
-        const SizedBox(width: 8),
-        Text("$label: ", style: TextStyle(color: subTextColor, fontSize: 13)),
-        Expanded(
-          child: Text(
-            value,
-            style: TextStyle(
-              color: textColor,
-              fontWeight: FontWeight.bold,
-              fontFamily: isMono ? 'monospace' : null,
-              fontSize: 13,
+  Widget _buildStatBox(String label, String value, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: color.withOpacity(0.1)),
+      ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label, style: TextStyle(color: color, fontSize: 8, fontWeight: FontWeight.w900, letterSpacing: 1)),
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
             ),
-            overflow: TextOverflow.ellipsis,
-          ),
+          ],
         ),
-      ],
+      );
+  }
+
+  Widget _buildCleanBookingCard(BuildContext context, Map<String, dynamic> data, String id, bool isDark) {
+    final status = data['status'] ?? 'PENDING';
+    final bookingId = data['bookingId'] ?? id;
+    final studentId = data['userId'];
+    final date = (data['bookingDate'] as Timestamp?)?.toDate() ?? DateTime.now();
+    final statusColor = status == 'PENDING' ? Colors.orange : (status == 'CONFIRMED' ? Colors.green : (status == 'PAID' ? const Color(0xFF10B981) : (status == 'COMPLETED' ? Colors.blue : Colors.red)));
+    
+    // Fix Floating Point Error
+    final rawPrice = data['price']?.toString() ?? '0';
+    final formattedPrice = double.tryParse(rawPrice.replaceAll(',', ''))?.toStringAsFixed(0) ?? '0';
+    
+    // Clean Room Type Display - Ultimate Robustness
+    final rawType = data['roomType'] ?? data['type'] ?? 'Standard';
+    final capNum = data['capacity'];
+    final capStr = capNum?.toString() ?? '?';
+    
+    // Convert '1-in-a-room' to '1 in a room'
+    String roomDisplay = rawType.replaceAll('-', ' ');
+    
+    // If it's a specific grouping like '2 in a room', use it exactly
+    if (roomDisplay.toLowerCase().contains('in a room')) {
+       // Already specific
+    } else if (capNum != null && capNum != 0) {
+       // Add the capacity to the type
+       roomDisplay = "$roomDisplay ($capStr in a room)";
+    } else if (roomDisplay == 'Standard' || roomDisplay == 'Room') {
+       // Total fallback
+       roomDisplay = "$capStr in a room";
+    }
+    
+    // Clean up any double-labeling just in case
+    roomDisplay = roomDisplay.replaceFirst('(Standard)', '').trim();
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(28),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 20, offset: const Offset(0, 8))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Bar
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            decoration: BoxDecoration(color: statusColor.withOpacity(0.05), borderRadius: const BorderRadius.vertical(top: Radius.circular(28))),
+            child: Row(
+              children: [
+                Container(width: 8, height: 8, decoration: BoxDecoration(color: statusColor, shape: BoxShape.circle)),
+                const SizedBox(width: 8),
+                Text(status.toUpperCase(), style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1)),
+                const SizedBox(width: 12),
+                Text("#$bookingId", style: TextStyle(color: statusColor.withOpacity(0.5), fontSize: 10, fontWeight: FontWeight.w900)),
+                const Spacer(),
+                Text(DateFormat('MMM dd, yyyy').format(date), style: TextStyle(color: Colors.grey[500], fontSize: 10, fontWeight: FontWeight.bold)),
+              ],
+            ),
+          ),
+          
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Name and Price - Vertical Stack if squashed
+                Row(
+                   crossAxisAlignment: CrossAxisAlignment.start,
+                   children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(data['userName'] ?? 'Student', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Color(0xFF0F172A), height: 1.1)),
+                            const SizedBox(height: 6),
+                            Text(data['hostelName'] ?? 'Hostel', style: TextStyle(color: Colors.grey[400], fontSize: 13, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Text("₵$formattedPrice", style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: Color(0xFF10B981))),
+                   ],
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Badges
+                Row(
+                  children: [
+                    _buildTag(Icons.hotel_outlined, roomDisplay),
+                    const SizedBox(width: 10),
+                    _buildTag(data['studentSex'] == 'Male' ? Icons.male : Icons.female, data['studentSex'] ?? 'Any'),
+                  ],
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // Dynamic Actions
+                if (status == 'PENDING')
+                  Row(
+                    children: [
+                      Expanded(child: _buildButton("DECLINE", Colors.red, true, () => _updateStatus(studentId, id, 'REJECTED'))),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildButton("APPROVE", Colors.green, false, () => _updateStatus(studentId, id, 'CONFIRMED'))),
+                    ],
+                  ),
+                  
+                if (status == 'PAID')
+                   Column(
+                     children: [
+                       _buildButton("MESSAGE STUDENT", const Color(0xFF2563EB), false, () => _openChat(context, studentId, data)),
+                       const SizedBox(height: 12),
+                       _buildButton("MARK COMPLETED", Colors.green, true, () => _updateStatus(studentId, bookingId, 'COMPLETED')),
+                     ],
+                   ),
+                   
+                if (status == 'CONFIRMED')
+                   Container(
+                     width: double.infinity,
+                     padding: const EdgeInsets.all(16),
+                     decoration: BoxDecoration(color: Colors.grey[50], borderRadius: BorderRadius.circular(16)),
+                     child: const Center(child: Text("WAITING FOR PAYMENT", style: TextStyle(color: Colors.grey, fontSize: 11, fontWeight: FontWeight.w900))),
+                   ),
+                
+                if (status == 'COMPLETED')
+                   Container(
+                     width: double.infinity,
+                     padding: const EdgeInsets.all(16),
+                     decoration: BoxDecoration(color: Colors.blue.withOpacity(0.05), borderRadius: BorderRadius.circular(16)),
+                     child: const Center(child: Text("BOOKING COMPLETED", style: TextStyle(color: Colors.blue, fontSize: 11, fontWeight: FontWeight.w900))),
+                   ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _buildActionButton(BuildContext context, {required String label, required IconData icon, required Color color, required VoidCallback onTap, bool isOutlined = false}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12),
-        decoration: BoxDecoration(
-          color: isOutlined ? Colors.transparent : color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(isOutlined ? 0.5 : 0.1))
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, size: 16, color: color),
-            const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12)),
-          ],
+  Widget _buildTag(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(color: const Color(0xFFF1F5F9), borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: Colors.grey[600]),
+          const SizedBox(width: 6),
+          Text(label, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey[700])),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildButton(String label, Color color, bool outlined, VoidCallback onTap) {
+    return Material(
+      color: outlined ? Colors.transparent : color,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: outlined ? Border.all(color: color.withOpacity(0.3), width: 2) : null,
+          ),
+          child: Center(
+            child: Text(label, style: TextStyle(color: outlined ? color : Colors.white, fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 1)),
+          ),
         ),
       ),
     );
   }
 
+  Future<void> _updateStatus(String userId, String bookingId, String status) async {
+    await FirestoreService().updateBookingStatus(userId, bookingId, status);
+    if (status == 'CONFIRMED') {
+      await NotificationService().showNotification(title: "Booking Approved", body: "Pending student payment.");
+    }
+  }
+
   Future<void> _openChat(BuildContext context, String studentId, Map<String, dynamic> data) async {
-    final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) return;
-    
-    final agentId = currentUser.uid;
+    final agentId = _auth.currentUser?.uid;
+    if (agentId == null) return;
     final chatsRef = FirebaseFirestore.instance.collection('chats');
     final query = await chatsRef.where('users', arrayContains: agentId).get();
-
-    String? targetChatId;
+    String? chatId;
     for (var doc in query.docs) {
-      final users = List<String>.from(doc['users']);
-      if (users.contains(studentId)) {
-        targetChatId = doc.id;
-        break;
+      if (List<String>.from(doc['users']).contains(studentId)) {
+        chatId = doc.id; break;
       }
     }
-
-    if (targetChatId == null) {
+    if (chatId == null) {
       final newChat = await chatsRef.add({
         'users': [agentId, studentId],
-        'lastMessage': '',
-        'lastMessageTime': FieldValue.serverTimestamp(),
-        'hostelName': data['hostelName'] ?? 'Hostel',
-        'studentName': data['userName'] ?? 'Student',
-        'hostelId': data['hostelId'] ?? '', 
+        'lastMessage': '', 'lastMessageTime': FieldValue.serverTimestamp(),
+        'hostelName': data['hostelName'], 'studentName': data['userName']
       });
-      targetChatId = newChat.id;
+      chatId = newChat.id;
     }
+    if (mounted) {
+      Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(chatId: chatId!, otherUserName: data['userName'], otherUserId: studentId)));
+    }
+  }
 
-    if (context.mounted) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => ChatPage(
-        chatId: targetChatId!, 
-        otherUserName: data['userName'] ?? 'Student', 
-        otherUserId: studentId
-      )));
-    }
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(color: Colors.blueAccent.withOpacity(0.05), shape: BoxShape.circle),
+            child: const Icon(Icons.receipt_long_rounded, size: 48, color: Colors.blueAccent),
+          ),
+          const SizedBox(height: 24),
+          const Text("No bookings yet", style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+          const Text("Your property listings will appear here once students start booking.", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w500, fontSize: 13), textAlign: TextAlign.center),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorState(String error, bool isDark) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 48),
+            const SizedBox(height: 16),
+            const Text("System Sync Required", style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
+            const SizedBox(height: 8),
+            Text(error, textAlign: TextAlign.center, style: TextStyle(color: Colors.grey[600], fontSize: 12, fontFamily: 'monospace')),
+            if (error.contains('index'))
+              Padding(
+                padding: const EdgeInsets.only(top: 16),
+                child: Text("Please click the link in your debug console to enable this index.", textAlign: TextAlign.center, style: TextStyle(color: Colors.blue[700], fontSize: 11, fontWeight: FontWeight.bold)),
+              ),
+          ],
+        ),
+      ),
+    );
   }
 }

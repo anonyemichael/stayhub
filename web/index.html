@@ -1,83 +1,426 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
   <base href="$FLUTTER_BASE_HREF">
-
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="StayHub helps students find and book the perfect hostel accommodation securely.">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  
+  <!-- PWA Theme -->
+  <meta name="theme-color" content="#0F2027">
+  <meta name="msapplication-TileColor" content="#0F2027">
+  <meta name="msapplication-TileImage" content="/app/icons/Icon-192.png">
 
-  <!-- iOS meta tags & icons -->
+  <!-- iOS / iPadOS App Experience -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="StayHub">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <!-- iPhone Retina (180x180) -->
+  <link rel="apple-touch-icon" sizes="180x180" href="/app/icons/apple-touch-icon.png">
+  <!-- iPad Retina (167x167) -->
+  <link rel="apple-touch-icon" sizes="167x167" href="/app/icons/apple-touch-icon.png">
+  <!-- iPad (152x152) -->
+  <link rel="apple-touch-icon" sizes="152x152" href="/app/icons/apple-touch-icon.png">
+  <!-- iPhone (120x120) -->
+  <link rel="apple-touch-icon" sizes="120x120" href="/app/icons/apple-touch-icon.png">
+  <!-- Fallback -->
+  <link rel="apple-touch-icon" href="/app/icons/apple-touch-icon.png">
+  <link rel="apple-touch-startup-image" href="/app/icons/splash.png">
+
+  <!-- Standard Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="favicon.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="icons/Icon-192.png">
   <link rel="shortcut icon" href="favicon.png">
-  <link rel="icon" type="image/png" href="favicon.png">
 
-  <!-- Google Maps -->
-  <!-- Google Maps -->
-  <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDZWSlVN-04XYTYTWjGKs3eZ7tIEipAbN8"></script>
-
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png" />
-
-  <title>StayHub | Find & Book Student Hostels in Ghana</title>
+  <title>StayHub | Find &amp; Book Student Hostels in Ghana</title>
   <link rel="manifest" href="manifest.json">
-</head>
+  
+  <!-- Google Maps Web Integration -->
+  <script async src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDVU5iVUdQKlEbbWhJlKYuBT4XrSydyufI&loading=async" onerror="console.error('[StayHub] Google Maps SDK blocked by client/ad-blocker.')"></script>
+  <!-- Paystack Inline SDK v2 -->
+  <script src="https://js.paystack.co/v2/inline.js" onerror="console.error('[StayHub] Paystack SDK blocked by client/ad-blocker.')"></script>
 
-<body>
   <style>
-    body {
-      background-color: #0F2027;
-      /* Dark background matching app theme */
-      display: flex;
-      justify-content: center;
-      align-items: center;
+    #paystack-loader {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
       height: 100vh;
-      margin: 0;
+      background: #0F2027;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
       color: white;
-      font-family: sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     }
-
-    .loader {
-      border: 5px solid rgba(255, 255, 255, 0.3);
+    .spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-left-color: #10B981;
       border-radius: 50%;
-      border-top: 5px solid #2E2AB7;
-      width: 50px;
-      height: 50px;
-      -webkit-animation: spin 1s linear infinite;
-      /* Safari */
       animation: spin 1s linear infinite;
+      margin-bottom: 20px;
     }
-
     @keyframes spin {
-      0% {
-        transform: rotate(0deg);
-      }
-
-      100% {
-        transform: rotate(360deg);
-      }
+      to { transform: rotate(360deg); }
     }
   </style>
-  <div id="loading">
-    <div class="loader"></div>
-  </div>
-  <script src="flutter_bootstrap.js" async onload="document.getElementById('loading').remove()"></script>
-</body>
 
+  <!-- Paystack Flutter-Web Bridge -->
+  <!-- Flutter renders into a CanvasKit canvas that sits on top of all DOM elements.
+       When Paystack opens its iframe, it appears BEHIND the Flutter canvas and is invisible.
+       This bridge function temporarily lowers the Flutter canvas so Paystack is visible,
+       then restores it when the payment is complete. -->
+  <script>
+    // Global helper for finding the Flutter glass pane
+    function getGlassPane() {
+      const gp = document.querySelector('flt-glass-pane') || 
+                 document.querySelector('flutter-view')?.shadowRoot?.querySelector('flt-glass-pane');
+      if (!gp) console.warn('[StayHub] Glass pane NOT found. UI might not hide correctly.');
+      return gp;
+    }
+
+    function hideFlutter() {
+      console.log('[StayHub] Hiding Flutter UI for payment...');
+      const loader = document.getElementById('paystack-loader');
+      if (loader) loader.style.display = 'flex';
+      
+      const gp = getGlassPane();
+      if (gp) {
+        gp.style.visibility = 'hidden';
+        gp.style.opacity = '0';
+        gp.style.pointerEvents = 'none'; // Ensure no interactions
+        if (gp.shadowRoot && gp.shadowRoot.firstElementChild) {
+          gp.shadowRoot.firstElementChild.style.display = 'none';
+        }
+      }
+    }
+
+    function showFlutter() {
+      console.log('[StayHub] Restoring Flutter UI...');
+      const loader = document.getElementById('paystack-loader');
+      if (loader) loader.style.display = 'none';
+
+      const gp = getGlassPane();
+      if (gp) {
+        gp.style.visibility = 'visible';
+        gp.style.opacity = '1';
+        gp.style.pointerEvents = 'auto';
+        if (gp.shadowRoot && gp.shadowRoot.firstElementChild) {
+          gp.shadowRoot.firstElementChild.style.display = 'block';
+        }
+      }
+    }
+
+    // Main entry point called from Flutter
+    window.openPaystackPortal = function(accessCode, authUrl) {
+      console.log('[StayHub] openPaystackPortal CALLED. Redirecting directly to authUrl:', authUrl);
+      
+      if (!authUrl) {
+        console.error('[StayHub] No auth URL provided!');
+        return;
+      }
+
+      // Hide flutter UI if necessary, show loader
+      const loader = document.getElementById('paystack-loader');
+      if (loader) loader.style.display = 'block';
+
+      // Perform a hard redirect to bypass all popup blockers and COOP issues
+      window.location.href = authUrl;
+    };
+  </script>
+
+  <!-- Auto-Update & Cache Busting Logic -->
+  <script>
+    // This value is automatically replaced by deploy.ps1 with a deployment timestamp
+    const currentAppVersion = "v127-stable-init";
+    const storedAppVersion = localStorage.getItem('stayhub_app_version');
+
+    console.log('🚀 STAYHUB BOOTSTRAP: Checking version...');
+
+    if (storedAppVersion !== currentAppVersion) {
+      console.log(`%c Version Mismatch: ${storedAppVersion} -> ${currentAppVersion} `, 'background: #222; color: #bada55; font-size: 20px;');
+      
+      try {
+        localStorage.setItem('stayhub_app_version', currentAppVersion);
+        // Verify it was actually saved to prevent infinite reload loops if localStorage is blocked
+        if (localStorage.getItem('stayhub_app_version') !== currentAppVersion) {
+          console.warn('[StayHub] LocalStorage write failed. Skipping cache clear to prevent infinite reload.');
+        } else {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for (let registration of registrations) {
+                registration.unregister();
+                console.log('Unregistered stale service worker.');
+              }
+            });
+          }
+
+          // Clear the Cache API
+          if ('caches' in window) {
+            caches.keys().then(function(cacheNames) {
+              cacheNames.forEach(function(cacheName) {
+                caches.delete(cacheName);
+              });
+              console.log('Cleared CacheStorage.');
+              // Hard reload the page
+              window.location.reload();
+            });
+          } else {
+            window.location.reload();
+          }
+        }
+      } catch (e) {
+        console.error('[StayHub] Error during version sync:', e);
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #020617; /* Matches Midnight Slate theme */
+      margin: 0;
+      padding: 0;
+      overflow: hidden; /* Prevents browser bounce/scroll interference with Flutter */
+      touch-action: none; /* Let Flutter handle touches */
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    .loading-container {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 30px;
+      z-index: 100;
+      background: #020617;
+      pointer-events: none; /* Ensure touches pass through once hidden/loading */
+    }
+
+    .splash-logo {
+      width: 100px;
+      height: 100px;
+      animation: pulse 2.5s infinite ease-in-out;
+      filter: drop-shadow(0 0 30px rgba(37, 99, 235, 0.4));
+    }
+
+    .loading-bar-container {
+      width: 200px;
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .loading-bar-fill {
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, #2563eb, transparent);
+      position: absolute;
+      animation: sweep 1.5s infinite linear;
+    }
+
+    .status-text {
+      color: #94a3b8;
+      font-size: 0.8rem;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); filter: drop-shadow(0 0 20px rgba(37, 99, 235, 0.3)); }
+      50% { transform: scale(1.1); filter: drop-shadow(0 0 40px rgba(37, 99, 235, 0.6)); }
+    }
+
+    @keyframes sweep {
+      from { left: -100%; }
+      to { left: 100%; }
+    }
+
+    /* Ambient Background Glows */
+    .bg-glow {
+      position: absolute;
+      width: 600px;
+      height: 600px;
+      background: radial-gradient(circle, rgba(37, 99, 235, 0.1), transparent 70%);
+      border-radius: 50%;
+      filter: blur(50px);
+      z-index: -1; /* Move behind Flutter canvas */
+      pointer-events: none; /* Never intercept touches */
+    }
+
+    /* --- PWA Install Banner --- */
+    .pwa-banner {
+        position: fixed;
+        bottom: 30px;
+        left: 50%;
+        transform: translateX(-50%) translateY(150%);
+        width: calc(100% - 40px);
+        max-width: 450px;
+        background: rgba(15, 23, 42, 0.95);
+        backdrop-filter: blur(20px);
+        -webkit-backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 24px;
+        padding: 16px 20px;
+        z-index: 10000;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+        transition: all 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .pwa-banner.show {
+        transform: translateX(-50%) translateY(0);
+    }
+
+    .pwa-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        overflow: hidden;
+        background: #fff;
+        flex-shrink: 0;
+    }
+
+    .pwa-icon img { width: 100%; height: 100%; object-fit: cover; }
+
+    .pwa-text { flex-grow: 1; }
+    .pwa-text strong { display: block; color: #fff; font-size: 1rem; }
+    .pwa-text p { color: rgba(255, 255, 255, 0.7); font-size: 0.8rem; margin: 2px 0 0; }
+
+    .btn-pwa {
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 14px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+
+    .pwa-close {
+        background: none;
+        border: none;
+        color: rgba(255, 255, 255, 0.4);
+        font-size: 1.1rem;
+        cursor: pointer;
+        padding: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="bg-glow"></div>
+  
+  <div class="loading-container" id="loading-indicator">
+    <!-- Use absolute path and add error handling for logo -->
+    <img src="icons/Icon-192.png" 
+         onerror="this.src='favicon.png'; console.warn('Logo failed to load, falling back to favicon');"
+         alt="StayHub" class="splash-logo">
+    <div class="loading-bar-container">
+      <div class="loading-bar-fill"></div>
+    </div>
+    <div class="status-text" id="status-text">Synchronizing Reality</div>
+    <div id="failsafe-container" style="display:none; margin-top: 20px; text-align: center;">
+        <p style="color: #64748b; font-size: 0.8rem; margin-bottom: 15px;">Taking longer than usual?</p>
+        <button onclick="window.location.reload()" class="btn-pwa" style="background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2);">Retry Connection</button>
+    </div>
+  </div>
+
+  <script>
+    // Failsafe timer: Show retry button if loading takes > 15s
+    setTimeout(() => {
+        const failsafe = document.getElementById('failsafe-container');
+        const status = document.getElementById('status-text');
+        if (failsafe && document.getElementById('loading-indicator').style.display !== 'none') {
+            failsafe.style.display = 'block';
+            if (status) status.innerText = "System latency detected";
+        }
+    }, 15000);
+  </script>
+
+  <!-- PWA Install Prompt -->
+  <div id="pwa-install-banner" class="pwa-banner">
+      <div class="pwa-icon">
+          <img src="icons/Icon-192.png" alt="StayHub">
+      </div>
+      <div class="pwa-text">
+          <strong>StayHub</strong>
+          <p id="pwa-message">Install app for a native experience</p>
+      </div>
+      <button id="pwa-install-btn" class="btn-pwa">Install</button>
+      <button id="pwa-close-btn" class="pwa-close">×</button>
+  </div>
+
+  <script src="flutter_bootstrap.js" async></script>
+
+  <script>
+    // PWA Install Logic
+    let deferredPrompt;
+    const pwaBanner = document.getElementById('pwa-install-banner');
+    const installBtn = document.getElementById('pwa-install-btn');
+    const closeBtn = document.getElementById('pwa-close-btn');
+    const pwaMessage = document.getElementById('pwa-message');
+
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+    if (!isStandalone) {
+        if (isIOS) {
+            setTimeout(() => {
+                if (pwaMessage) pwaMessage.innerText = "Tap Share and 'Add to Home Screen'";
+                if (installBtn) installBtn.innerText = "Got it";
+                if (pwaBanner) pwaBanner.classList.add('show');
+            }, 6000);
+        }
+    }
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+        e.preventDefault();
+        deferredPrompt = e;
+        setTimeout(() => {
+            if (pwaBanner) pwaBanner.classList.add('show');
+        }, 4000);
+    });
+
+    if (installBtn) {
+        installBtn.addEventListener('click', async () => {
+            if (deferredPrompt) {
+                deferredPrompt.prompt();
+                const { outcome } = await deferredPrompt.userChoice;
+                deferredPrompt = null;
+                if (pwaBanner) pwaBanner.classList.remove('show');
+            } else if (isIOS) {
+                if (pwaBanner) pwaBanner.classList.remove('show');
+            }
+        });
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => {
+            if (pwaBanner) pwaBanner.classList.remove('show');
+        });
+    }
+  </script>
+  <div id="paystack-loader">
+    <div class="spinner"></div>
+    <div>Securely connecting to Paystack...</div>
+  </div>
+</body>
 </html>

@@ -171,12 +171,14 @@ class _UserListState extends State<_UserList> with AutomaticKeepAliveClientMixin
              final email = data['email'] ?? 'No Email';
              final photo = data['photoUrl'];
              final isBanned = data['isBanned'] == true;
+             final school = data['school'];
              
              // Role/Status flags
              final isVerified = data['isVerified'] == true;
              final isAgent = widget.collection == 'agents';
              final isAdmin = widget.collection == 'admins';
              final role = data['role'] ?? '';
+             final List<String> schoolsOfOperation = List<String>.from(data['schoolsOfOperation'] ?? []);
 
              return ListTile(
                leading: CircleAvatar(
@@ -203,7 +205,23 @@ class _UserListState extends State<_UserList> with AutomaticKeepAliveClientMixin
                    ),
                  ],
                ),
-               subtitle: Text(email),
+               subtitle: Column(
+                 crossAxisAlignment: CrossAxisAlignment.start,
+                 children: [
+                    Text(email),
+                    if (isAgent && schoolsOfOperation.isNotEmpty) ...[
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: schoolsOfOperation.map((s) => _buildListSchoolBadge(context, s)).toList(),
+                      ),
+                    ] else if (school != null && school.toString().isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      _buildListSchoolBadge(context, school.toString()),
+                    ]
+                 ],
+               ),
                trailing: PopupMenuButton<String>(
                  onSelected: (val) => _handleAction(context, val, id, widget.collection, isBanned),
                  itemBuilder: (context) => [
@@ -317,5 +335,54 @@ class _UserListState extends State<_UserList> with AutomaticKeepAliveClientMixin
              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("User Deleted Permanently")));
           }
        }
+   }
+
+   Widget _buildListSchoolBadge(BuildContext context, String schoolName) {
+     return FutureBuilder<QuerySnapshot>(
+       future: FirebaseFirestore.instance.collection('schools').where('name', isEqualTo: schoolName).limit(1).get(),
+       builder: (context, snapshot) {
+         String? logoUrl;
+         if (snapshot.hasData && snapshot.data!.docs.isNotEmpty) {
+           final doc = snapshot.data!.docs.first.data() as Map<String, dynamic>;
+           logoUrl = doc['logo_url'];
+         }
+         
+         final isDark = Theme.of(context).brightness == Brightness.dark;
+         return Container(
+           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+           decoration: BoxDecoration(
+             color: isDark ? Colors.white.withOpacity(0.1) : Colors.black.withOpacity(0.05),
+             borderRadius: BorderRadius.circular(12),
+           ),
+           child: Row(
+             mainAxisSize: MainAxisSize.min,
+             children: [
+               if (logoUrl != null && logoUrl.isNotEmpty) ...[
+                 CircleAvatar(
+                   radius: 8,
+                   backgroundColor: Colors.white,
+                   backgroundImage: NetworkImage(logoUrl),
+                 ),
+                 const SizedBox(width: 4),
+               ] else ...[
+                 Icon(Icons.school, size: 10, color: isDark ? Colors.white : Colors.black),
+                 const SizedBox(width: 4),
+               ],
+               Flexible(
+                 child: Text(
+                   schoolName,
+                   overflow: TextOverflow.ellipsis,
+                   style: TextStyle(
+                     fontSize: 10,
+                     fontWeight: FontWeight.bold,
+                     color: isDark ? Colors.white : Colors.black,
+                   ),
+                 ),
+               ),
+             ],
+           ),
+         );
+       },
+     );
    }
 }

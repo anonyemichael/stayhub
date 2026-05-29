@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:stayhub/services/firestore_service.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 
 class HelpPage extends StatefulWidget {
   const HelpPage({super.key});
@@ -12,137 +12,310 @@ class HelpPage extends StatefulWidget {
   State<HelpPage> createState() => _HelpPageState();
 }
 
-class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
+class _HelpPageState extends State<HelpPage> {
   final TextEditingController _searchController = TextEditingController();
-  final FirestoreService _firestoreService = FirestoreService();
   String _searchQuery = "";
+  String _selectedCategory = "All";
+  
+  String _whatsappSupport = "";
+  String _phoneSupport = "";
 
-  late AnimationController _bgController;
-  late AnimationController _entranceController;
-
-  final List<Map<String, dynamic>> _categories = [
-    {'icon': Icons.payment_rounded, 'label': 'Payments', 'color': Colors.orangeAccent},
-    {'icon': Icons.hotel_rounded, 'label': 'Booking', 'color': Colors.blueAccent},
-    {'icon': Icons.person_rounded, 'label': 'Account', 'color': Colors.purpleAccent},
-    {'icon': Icons.security_rounded, 'label': 'Safety', 'color': Colors.greenAccent},
-  ];
-
-  String _selectedCategory = "Payments";
+  final List<String> _categories = ["All", "Booking", "Payments", "Account", "Safety"];
 
   @override
   void initState() {
     super.initState();
-    _bgController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 15),
-    )..repeat(reverse: true);
-
-    _entranceController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1000),
-    )..forward();
+    _loadSupportContacts();
   }
 
-  @override
-  void dispose() {
-    _bgController.dispose();
-    _entranceController.dispose();
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  // --- ACTIONS ---
-
-  Future<void> _launchWhatsApp() async {
-    HapticFeedback.heavyImpact();
-    String number = "";
+  Future<void> _loadSupportContacts() async {
     try {
       final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
-      if (doc.exists) {
+      if (doc.exists && mounted) {
         final data = doc.data() as Map<String, dynamic>;
-        number = data['student_support']?['whatsapp'] ?? "";
+        setState(() {
+          _whatsappSupport = data['student_support']?['whatsapp'] ?? "";
+          _phoneSupport = data['admin_contact']?['phone'] ?? data['student_support']?['whatsapp'] ?? "";
+        });
       }
-    } catch (_) {}
-
-    if (number.isEmpty) {
-      _showSnack("WhatsApp support is currently unavailable.", isError: true);
-      return;
-    }
-
-    final Uri url = Uri.parse("https://wa.me/$number?text=${Uri.encodeComponent('Hello StayHub Support, I need help with... ')}");
-    if (await canLaunchUrl(url)) {
-      await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint("Error loading support contacts: $e");
     }
   }
 
-  Future<void> _launchEmail() async {
-    HapticFeedback.lightImpact();
-    final Uri url = Uri(scheme: 'mailto', path: 'support@stayhubgh.com');
-    if (await canLaunchUrl(url)) await launchUrl(url);
-  }
-
-  Future<void> _launchCall() async {
-    HapticFeedback.heavyImpact();
-    String number = "";
-    try {
-      final doc = await FirebaseFirestore.instance.collection('config').doc('app_config').get();
-      if (doc.exists) {
-        final data = doc.data() as Map<String, dynamic>;
-        number = data['admin_contact']?['phone'] ?? data['student_support']?['whatsapp'] ?? "";
-      }
-    } catch (_) {}
-
-    if (number.isNotEmpty) {
-      final Uri url = Uri.parse("tel:$number");
-      if (await canLaunchUrl(url)) await launchUrl(url);
-    }
-  }
-
-  void _showSnack(String msg, {bool isError = false}) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(msg),
-        backgroundColor: isError ? Colors.redAccent : Colors.black,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
-  }
+  final List<Map<String, dynamic>> _faqs = [
+    {
+      'q': "How do I secure a room?",
+      'a': "Browse hostels, select a room, and tap 'Book Now'. Once you pay the commitment fee, the room is held for you until check-in.",
+      'cat': 'Booking'
+    },
+    {
+      'q': "What is the commitment fee?",
+      'a': "It is a small percentage of the total rent paid to StayHub to secure your room. The balance is paid directly to the hostel upon arrival.",
+      'cat': 'Payments'
+    },
+    {
+      'q': "How do I get a refund?",
+      'a': "Refunds are not processed directly through the app. Please contact the StayHub support team or the hostel agent directly to discuss refund eligibility and procedures.",
+      'cat': 'Payments'
+    },
+    {
+      'q': "Are the hostels verified?",
+      'a': "Yes! Every hostel with a 'Verified' badge has been physically inspected by our team for safety and amenities.",
+      'cat': 'Safety'
+    },
+    {
+      'q': "Can I change my room after booking?",
+      'a': "Room changes depend on availability. Please message the hostel agent directly via the 'Messages' tab to request a change.",
+      'cat': 'Booking'
+    },
+    {
+      'q': "How do I reset my password?",
+      'a': "Go to Settings > Change Password, or use the 'Forgot Password' link on the login screen.",
+      'cat': 'Account'
+    },
+  ];
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = Theme.of(context).primaryColor;
+    final bgColor = isDark ? const Color(0xFF0F172A) : const Color(0xFFF8FAFC);
+    final cardColor = isDark ? const Color(0xFF1E293B) : Colors.white;
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0F172A),
-      body: Stack(
-        children: [
-          _buildAnimatedBackground(),
-          SafeArea(
-            child: Column(
-              children: [
-                _buildAppBar(),
-                Expanded(
-                  child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 24),
+      backgroundColor: bgColor,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          // 1. PREMIUM HEADER
+          SliverAppBar(
+            expandedHeight: 220,
+            floating: false,
+            pinned: true,
+            backgroundColor: primaryColor,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
+              onPressed: () => Navigator.pop(context),
+            ),
+            flexibleSpace: FlexibleSpaceBar(
+              background: Stack(
+                fit: StackFit.expand,
+                children: [
+                  // Decorative shapes
+                  Positioned(
+                    top: -50, right: -50,
+                    child: CircleAvatar(radius: 120, backgroundColor: Colors.white.withOpacity(0.1)),
+                  ),
+                  Positioned(
+                    bottom: -30, left: -20,
+                    child: CircleAvatar(radius: 80, backgroundColor: Colors.black.withOpacity(0.05)),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 80, 24, 20),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        const SizedBox(height: 20),
-                        _buildHeroSection(),
-                        const SizedBox(height: 30),
-                        _buildSearchBar(),
-                        const SizedBox(height: 40),
-                        _buildContactCards(),
-                        const SizedBox(height: 40),
-                        _buildCategoryTabs(),
-                        const SizedBox(height: 24),
-                        _buildFaqList(),
-                        const SizedBox(height: 40),
+                        const Text(
+                          "Support Center",
+                          style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.w900, letterSpacing: -1),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          "We're here to help you find your perfect stay.",
+                          style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 16),
+                        ),
                       ],
                     ),
                   ),
+                ],
+              ),
+            ),
+          ),
+
+          // 2. SEARCH BAR
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 20, 24, 30),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: cardColor,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 15, offset: const Offset(0, 5))
+                  ],
+                  border: Border.all(color: Colors.grey.withOpacity(0.1)),
                 ),
-              ],
+                child: TextField(
+                  controller: _searchController,
+                  onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
+                  decoration: InputDecoration(
+                    hintText: "Search for help topics...",
+                    hintStyle: TextStyle(color: Colors.grey[400]),
+                    prefixIcon: Icon(Icons.search, color: primaryColor),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // 3. CONTACT OPTIONS
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 30),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text("Quick Connect", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      _buildContactButton(
+                        context,
+                        icon: FontAwesomeIcons.whatsapp,
+                        label: "WhatsApp",
+                        color: const Color(0xFF25D366),
+                        onTap: () {
+                          if (_whatsappSupport.isNotEmpty) {
+                            _launchURL("https://wa.me/$_whatsappSupport");
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("WhatsApp support unavailable.")));
+                          }
+                        },
+                      ),
+                      const SizedBox(width: 16),
+                      _buildContactButton(
+                        context,
+                        icon: Icons.headset_mic_rounded,
+                        label: "Call Us",
+                        color: Colors.blueAccent,
+                        onTap: () {
+                          if (_phoneSupport.isNotEmpty) {
+                            _launchURL("tel:$_phoneSupport");
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Phone support unavailable.")));
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // 4. CATEGORY TABS
+          SliverToBoxAdapter(
+            child: SizedBox(
+              height: 45,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                itemCount: _categories.length,
+                itemBuilder: (context, index) {
+                  final cat = _categories[index];
+                  final isSelected = _selectedCategory == cat;
+                  return GestureDetector(
+                    onTap: () => setState(() => _selectedCategory = cat),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 200),
+                      margin: const EdgeInsets.only(right: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: isSelected ? primaryColor : cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: isSelected ? Colors.transparent : Colors.grey.withOpacity(0.2)),
+                      ),
+                      child: Text(
+                        cat,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : (isDark ? Colors.white70 : Colors.black87),
+                          fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+
+          // 5. FAQ LIST
+          SliverPadding(
+            padding: const EdgeInsets.all(24),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  final filteredFaqs = _faqs.where((f) {
+                    final matchesCat = _selectedCategory == "All" || f['cat'] == _selectedCategory;
+                    final matchesSearch = _searchQuery.isEmpty || 
+                        f['q'].toString().toLowerCase().contains(_searchQuery) || 
+                        f['a'].toString().toLowerCase().contains(_searchQuery);
+                    return matchesCat && matchesSearch;
+                  }).toList();
+
+                  if (index >= filteredFaqs.length) return null;
+                  final faq = filteredFaqs[index];
+
+                  return Container(
+                    margin: const EdgeInsets.only(bottom: 16),
+                    decoration: BoxDecoration(
+                      color: cardColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.grey.withOpacity(0.1)),
+                    ),
+                    child: Theme(
+                      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                      child: ExpansionTile(
+                        title: Text(
+                          faq['q'],
+                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                        ),
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                            child: Text(
+                              faq['a'],
+                              style: TextStyle(color: isDark ? Colors.white60 : Colors.black54, height: 1.5),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                childCount: _faqs.length,
+              ),
+            ),
+          ),
+
+          // 6. FOOTER
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.all(40),
+              child: Column(
+                children: [
+                  Text(
+                    "Can't find what you're looking for?",
+                    style: TextStyle(color: Colors.grey[500], fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () => _launchURL("mailto:support@stayhubgh.com"),
+                    child: Text("Email Support", style: TextStyle(color: primaryColor, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    "STAYHUB v1.2.0",
+                    style: TextStyle(color: Colors.grey.withOpacity(0.3), fontSize: 10, letterSpacing: 2),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
@@ -150,128 +323,27 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildAppBar() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          _buildGlassIconButton(Icons.arrow_back_ios_new, () => Navigator.pop(context)),
-          const Text(
-            "SUPPORT HUB",
-            style: TextStyle(
-              color: Colors.white,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w800,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(width: 45), // Placeholder for balance
-        ],
-      ),
-    );
-  }
-
-  Widget _buildHeroSection() {
-    return _buildAnimatedItem(0, Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          "How can we\nhelp you today?",
-          style: TextStyle(
-            color: Colors.white,
-            fontSize: 38,
-            fontWeight: FontWeight.w900,
-            height: 1.1,
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          "Find answers instantly or talk to a concierge.",
-          style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 16),
-        ),
-      ],
-    ));
-  }
-
-  Widget _buildSearchBar() {
-    return _buildAnimatedItem(1, ClipRRect(
-      borderRadius: BorderRadius.circular(20),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-        child: Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.1)),
-          ),
-          child: TextField(
-            controller: _searchController,
-            onChanged: (v) => setState(() => _searchQuery = v.toLowerCase()),
-            style: const TextStyle(color: Colors.white),
-            decoration: InputDecoration(
-              hintText: "Search for topics or keywords...",
-              hintStyle: TextStyle(color: Colors.white.withOpacity(0.4)),
-              prefixIcon: const Icon(Icons.search, color: Colors.blueAccent),
-              border: InputBorder.none,
-              contentPadding: const EdgeInsets.symmetric(vertical: 20),
-            ),
-          ),
-        ),
-      ),
-    ));
-  }
-
-  Widget _buildContactCards() {
-    return _buildAnimatedItem(2, Row(
-      children: [
-        _buildContactCard(
-          icon: Icons.message_rounded,
-          title: "WhatsApp",
-          subtitle: "Instant Help",
-          color: const Color(0xFF25D366),
-          onTap: _launchWhatsApp,
-        ),
-        const SizedBox(width: 16),
-        _buildContactCard(
-          icon: Icons.headset_mic_rounded,
-          title: "Hotline",
-          subtitle: "Call Agent",
-          color: Colors.blueAccent,
-          onTap: _launchCall,
-        ),
-      ],
-    ));
-  }
-
-  Widget _buildContactCard({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildContactButton(BuildContext context, {required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     return Expanded(
-      child: GestureDetector(
+      child: InkWell(
         onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.all(20),
+          padding: const EdgeInsets.symmetric(vertical: 20),
           decoration: BoxDecoration(
             color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(24),
+            borderRadius: BorderRadius.circular(16),
             border: Border.all(color: color.withOpacity(0.2)),
           ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                child: Icon(icon, color: Colors.white, size: 20),
+              Icon(icon, color: color, size: 28),
+              const SizedBox(height: 12),
+              Text(
+                label,
+                style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: FontWeight.bold),
               ),
-              const SizedBox(height: 16),
-              Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16)),
-              Text(subtitle, style: TextStyle(color: Colors.white.withOpacity(0.5), fontSize: 12)),
             ],
           ),
         ),
@@ -279,170 +351,14 @@ class _HelpPageState extends State<HelpPage> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildCategoryTabs() {
-    return _buildAnimatedItem(3, SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      physics: const BouncingScrollPhysics(),
-      child: Row(
-        children: _categories.map((cat) {
-          final isSelected = _selectedCategory == cat['label'];
-          return GestureDetector(
-            onTap: () => setState(() => _selectedCategory = cat['label']!),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: isSelected ? cat['color'] : Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: isSelected ? Colors.transparent : Colors.white.withOpacity(0.1)),
-              ),
-              child: Row(
-                children: [
-                  Icon(cat['icon'] as IconData, size: 18, color: isSelected ? Colors.black : cat['color'] as Color),
-                  const SizedBox(width: 8),
-                  Text(
-                    cat['label'] as String,
-                    style: TextStyle(
-                      color: isSelected ? Colors.black : Colors.white,
-                      fontWeight: isSelected ? FontWeight.w800 : FontWeight.normal,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    ));
-  }
-
-  Widget _buildFaqList() {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getFaqs(),
-      builder: (context, snapshot) {
-        var faqs = [
-          // Fallback Local FAQs categorized
-          {'q': "How do I make payment?", 'a': "Go to your booking details and tap 'Pay Now'. We support Mobile Money and Cards.", 'cat': 'Payments'},
-          {'q': "When will my booking be confirmed?", 'a': "Agents usually confirm within 2-4 hours. You'll get a notification instantly.", 'cat': 'Booking'},
-          {'q': "Can I get a refund?", 'a': "Full automated refunds are available for 24 hours after payment. After that, contact the agent.", 'cat': 'Payments'},
-          {'q': "How to update my profile?", 'a': "Go to Profile > Edit Profile to update your name, phone, or avatar.", 'cat': 'Account'},
-          {'q': "How do I know a hostel is safe?", 'a': "Every hostel on StayHub is physically verified by our team. Check for the 'Verified' badge.", 'cat': 'Safety'},
-        ];
-
-        // Filter by category and search query
-        var filteredFaqs = faqs.where((f) {
-           final matchesCat = f['cat'] == _selectedCategory;
-           final matchesSearch = _searchQuery.isEmpty || f['q']!.toLowerCase().contains(_searchQuery) || f['a']!.toLowerCase().contains(_searchQuery);
-           return matchesCat && matchesSearch;
-        }).toList();
-
-        if (filteredFaqs.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 40),
-              child: Column(
-                children: [
-                  Icon(Icons.search_off_rounded, size: 60, color: Colors.white.withOpacity(0.1)),
-                  const SizedBox(height: 16),
-                  Text("No answers found for this search.", style: TextStyle(color: Colors.white.withOpacity(0.3))),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return _buildAnimatedItem(4, Column(
-          children: filteredFaqs.map((faq) {
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.03),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.05)),
-              ),
-              child: Theme(
-                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-                child: ExpansionTile(
-                  tilePadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  iconColor: Colors.blueAccent,
-                  collapsedIconColor: Colors.white24,
-                  title: Text(
-                    faq['q'] as String,
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600, fontSize: 15),
-                  ),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-                      child: Text(
-                        faq['a'] as String,
-                        style: TextStyle(color: Colors.white.withOpacity(0.6), height: 1.5),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }).toList(),
-        ));
-      },
-    );
-  }
-
-  Widget _buildAnimatedBackground() {
-    return AnimatedBuilder(
-      animation: _bgController,
-      builder: (context, child) {
-        return Stack(
-          children: [
-            Container(color: const Color(0xFF0F172A)),
-            Positioned(
-              top: -100 + (_bgController.value * 80),
-              left: -50,
-              child: _buildBlurBlob(350, Colors.blueAccent.withOpacity(0.2)),
-            ),
-            Positioned(
-              bottom: 100 - (_bgController.value * 60),
-              right: -100,
-              child: _buildBlurBlob(400, Colors.purpleAccent.withOpacity(0.15)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildBlurBlob(double size, Color color) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, color: color, boxShadow: [BoxShadow(color: color, blurRadius: 100, spreadRadius: 40)]),
-      child: BackdropFilter(filter: ImageFilter.blur(sigmaX: 50, sigmaY: 50), child: Container(color: Colors.transparent)),
-    );
-  }
-
-  Widget _buildGlassIconButton(IconData icon, VoidCallback onTap) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), shape: BoxShape.circle),
-        child: Icon(icon, color: Colors.white, size: 20),
-      ),
-    );
-  }
-
-  Widget _buildAnimatedItem(int index, Widget child) {
-    return FadeTransition(
-      opacity: Tween<double>(begin: 0, end: 1).animate(
-        CurvedAnimation(parent: _entranceController, curve: Interval(index * 0.15, 1.0, curve: Curves.easeOutCubic)),
-      ),
-      child: SlideTransition(
-        position: Tween<Offset>(begin: const Offset(0, 0.4), end: Offset.zero).animate(
-          CurvedAnimation(parent: _entranceController, curve: Interval(index * 0.15, 1.0, curve: Curves.easeOutCubic)),
-        ),
-        child: child,
-      ),
-    );
+  Future<void> _launchURL(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Could not launch application.")),
+      );
+    }
   }
 }

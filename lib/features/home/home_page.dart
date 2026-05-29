@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:stayhub/core/school_utils.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:carousel_slider/carousel_slider.dart';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:stayhub/services/firestore_service.dart';
@@ -12,7 +14,14 @@ import 'package:stayhub/features/home/widgets/advanced_filter_modal.dart';
 import 'package:stayhub/features/home/widgets/hostel_horizontal_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:stayhub/features/map/map_page.dart';
+import 'package:stayhub/features/chat/chat_inbox_page.dart';
+import 'package:stayhub/services/notification_service.dart';
 import 'package:stayhub/services/app_config_service.dart';
+import 'package:stayhub/services/local_cache_service.dart';
+import 'package:stayhub/core/image_utils.dart';
+import 'package:stayhub/core/widgets/school_logo.dart';
+import 'package:stayhub/core/widgets/skeleton.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -31,27 +40,72 @@ class _HomePageState extends State<HomePage> {
   // Advanced Filter State
   RangeValues? _priceRange;
   List<String> _filterAmenities = [];
+  
+  Map<String, String> _schoolLogos = {};
 
   @override
   void initState() {
     super.initState();
+    _loadCachedData();
     _fetchUserSchool();
     _loadDynamicCategories();
   }
 
+  Future<void> _loadCachedData() async {
+    // Load User info from cache
+    final cachedProfile = await LocalCacheService.load(LocalCacheService.KEY_USER_PROFILE);
+    if (cachedProfile != null && mounted) {
+      setState(() {
+        _userName = cachedProfile['name'] ?? "";
+        _userSchool = cachedProfile['school'];
+      });
+    }
+
+    // Load Categories from cache
+    final cachedCats = await LocalCacheService.load(LocalCacheService.KEY_CATEGORIES);
+    if (cachedCats != null && mounted) {
+      setState(() {
+        _categories.clear();
+        _categories.addAll(List<String>.from(cachedCats));
+      });
+    }
+  }
+
   Future<void> _loadDynamicCategories() async {
     try {
-      final config = await AppConfigService().getConfig();
-      final List<String> dynSchools = List<String>.from(config['available_schools'] ?? []);
-      if (dynSchools.isNotEmpty && mounted) {
+      final snapshot = await FirebaseFirestore.instance.collection('schools').where('isActive', isEqualTo: true).get();
+      final List<Map<String, dynamic>> schoolsData = snapshot.docs.map((d) => d.data()).toList();
+      
+      final List<String> dynSchools = schoolsData.map((s) => s['name'].toString()).toList();
+      
+      final Map<String, String> fetchedLogos = {};
+      for (var s in schoolsData) {
+        if (s['logo_url'] != null && s['logo_url'].toString().isNotEmpty) {
+           fetchedLogos[s['name'].toString().toUpperCase()] = s['logo_url'].toString();
+        }
+      }
+
+      final List<String> newCategories = ["All", "My School 🎓"];
+      
+      // Major schools should always be at the front
+      final List<String> majorSchools = ["UENR", "KNUST", "UG"];
+      newCategories.addAll(majorSchools);
+      
+      // Add any additional schools from Firestore (excluding duplicates)
+      newCategories.addAll(dynSchools.where((s) => !majorSchools.contains(s.toUpperCase())));
+      
+      newCategories.addAll(["Affordable", "Luxury"]);
+
+      if (mounted) {
         setState(() {
-          // Keep All, My School, then schools, then Affordable, Luxury
+          _schoolLogos = fetchedLogos;
           _categories.clear();
-          _categories.addAll(["All", "My School 🎓"]);
-          _categories.addAll(dynSchools);
-          _categories.addAll(["Affordable", "Luxury"]);
+          _categories.addAll(newCategories);
         });
       }
+      
+      // Save to cache
+      await LocalCacheService.save(LocalCacheService.KEY_CATEGORIES, newCategories);
     } catch (e) {
       debugPrint("Error loading categories: $e");
     }
@@ -63,8 +117,15 @@ class _HomePageState extends State<HomePage> {
       try {
         final doc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (mounted && doc.exists) {
+          final data = doc.data()!;
           setState(() {
-            _userSchool = doc.data()?['school'];
+            _userSchool = data['school'];
+            _userName = data['name'] ?? user.displayName ?? "Student";
+          });
+          // Cache it
+          await LocalCacheService.save(LocalCacheService.KEY_USER_PROFILE, {
+            'name': _userName,
+            'school': _userSchool,
           });
         }
       } catch (e) {
@@ -73,10 +134,14 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  String _userName = "";
+
   final List<String> _categories = [
     "All",
     "My School 🎓",
     "UENR",
+    "KNUST",
+    "UG",
     "CUG",
     "UDS",
     "Affordable",
@@ -96,17 +161,19 @@ class _HomePageState extends State<HomePage> {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1200),
           child: CustomScrollView(
-            physics: const AlwaysScrollableScrollPhysics(parent: BouncingScrollPhysics()),
+            physics: const AlwaysScrollableScrollPhysics(), // Use platform defaults for better performance
             slivers: [
               _buildSliverAppBar(),
               SliverToBoxAdapter(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    const SizedBox(height: 25),
                     _CategoryList(
                       categories: _categories,
                       selectedIndex: _selectedCategoryIndex,
                       onChanged: (index) => setState(() => _selectedCategoryIndex = index),
+                      schoolLogos: _schoolLogos,
                     ),
                     const SizedBox(height: 25),
                     
@@ -140,7 +207,20 @@ class _HomePageState extends State<HomePage> {
                 stream: _firestoreService.getHostels(),
                 builder: (context, snapshot) {
                   if (!snapshot.hasData) {
-                    return const SliverToBoxAdapter(child: Center(child: Padding(padding: EdgeInsets.all(20), child: CircularProgressIndicator())));
+                    return SliverPadding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      sliver: SliverGrid(
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: (MediaQuery.of(context).size.width / 220).floor().clamp(2, 5),
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: MediaQuery.of(context).size.width < 400 ? 0.65 : 0.68,
+                        ),
+                        delegate: SliverChildListDelegate(
+                          List.generate(6, (index) => const HostelSkeleton()),
+                        ),
+                      ),
+                    );
                   }
                   
                   var docs = snapshot.data?.docs ?? [];
@@ -159,13 +239,13 @@ class _HomePageState extends State<HomePage> {
                   final crossAxisCount = (effectiveWidth / 220).floor().clamp(2, 5); 
     
                   return SliverPadding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                     sliver: SliverGrid(
                       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
                         crossAxisCount: crossAxisCount,
-                        mainAxisSpacing: 14,
-                        crossAxisSpacing: 14,
-                        childAspectRatio: 0.7, 
+                        mainAxisSpacing: 16,
+                        crossAxisSpacing: 16,
+                        childAspectRatio: screenWidth < 400 ? 0.65 : 0.68,
                       ),
                       delegate: SliverChildBuilderDelegate(
                         (context, index) {
@@ -305,18 +385,33 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildSliverAppBar() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final expandedHeight = screenWidth < 380 ? 200.0 : 225.0;
+
     return SliverAppBar(
-      expandedHeight: 220.0,
+      expandedHeight: expandedHeight,
       floating: false,
       pinned: true,
       elevation: 0,
+      backgroundColor: Theme.of(context).primaryColor,
       flexibleSpace: FlexibleSpaceBar(
         background: Stack(
           children: [
-            Container(decoration: BoxDecoration(gradient: LinearGradient(colors: [Theme.of(context).primaryColor, Colors.deepPurple.shade800], begin: Alignment.topLeft, end: Alignment.bottomRight))),
+            Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Theme.of(context).primaryColor, Colors.deepPurple.shade900],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+            ),
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(20.0),
+                padding: EdgeInsets.symmetric(
+                  horizontal: 20.0,
+                  vertical: 16.0,
+                ),
                 child: Column(
                   children: [
                     _buildAppBarHeader(),
@@ -332,53 +427,154 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildSchoolBadgeInline(String schoolName) {
+    final String? logoUrl = SchoolUtils.getSchoolLogo(schoolName, _schoolLogos);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (logoUrl != null && logoUrl.isNotEmpty) ...[
+            ClipOval(
+              child: SchoolLogo(
+                logoUrl: logoUrl,
+                size: 16,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 4),
+          ] else ...[
+            ClipOval(child: Image.asset('assets/logo/logo.png', width: 16, height: 16, fit: BoxFit.cover)),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            schoolName,
+            style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _getGreeting() {
     final now = DateTime.now();
     if (now.month == 12 && (now.day >= 24 && now.day <= 26)) {
-      return "Merry Christmas 🎄,";
+      return "Merry Christmas 🎄";
     } else if ((now.month == 12 && now.day == 31) || (now.month == 1 && now.day == 1)) {
-      return "Happy New Year 🎉,";
+      return "Happy New Year 🎉";
     } else if (now.month == 2 && now.day == 14) {
-      return "Happy Valentines ❤️,";
+      return "Happy Valentines ❤️";
     } else {
       final hour = now.hour;
-      if (hour < 12) return "Good Morning 🌤️,";
-      if (hour < 17) return "Good Afternoon ☀️,";
-      return "Good Evening 🌙,";
+      if (hour < 12) return "Good Morning 🌤️";
+      if (hour < 17) return "Good Afternoon ☀️";
+      return "Good Evening 🌙";
     }
   }
 
   Widget _buildAppBarHeader() {
     final greeting = _getGreeting();
+    final screenWidth = MediaQuery.of(context).size.width;
+    
+    final titleFontSize = screenWidth < 360 ? 20.0 : (screenWidth < 400 ? 24.0 : 28.0);
+    final greetingFontSize = screenWidth < 360 ? 12.0 : 14.0;
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(greeting, style: const TextStyle(color: Colors.white70, fontSize: 14)),
-              const SizedBox(height: 4),
-              const Text("Find your stay", 
-                style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
+              Text(
+                greeting, 
+                style: TextStyle(
+                  color: Colors.white.withOpacity(0.8), 
+                  fontSize: greetingFontSize, 
+                  fontWeight: FontWeight.w500
+                ),
+              ),
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      _userName.isNotEmpty ? _userName.split(' ')[0] : "Guest",
+                      style: TextStyle(
+                        color: Colors.white, 
+                        fontSize: titleFontSize, 
+                        fontWeight: FontWeight.bold,
+                        letterSpacing: -0.5
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (_userSchool != null && _userSchool!.isNotEmpty) ...[
+                    const SizedBox(width: 8),
+                    _buildSchoolBadgeInline(_userSchool!),
+                  ],
+                ],
               ),
             ],
           ),
         ),
+        const SizedBox(width: 8),
         Row(
           mainAxisSize: MainAxisSize.min,
           children: [
             IconButton(
               onPressed: _showSupportOptions,
               icon: const Icon(Icons.headset_mic_outlined, color: Colors.white),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
               tooltip: "Support",
             ),
+            StreamBuilder<int>(
+              stream: FirebaseAuth.instance.currentUser != null 
+                  ? _firestoreService.getTotalUnreadCount(FirebaseAuth.instance.currentUser!.uid) 
+                  : Stream.value(0),
+              builder: (context, snapshot) {
+                final count = snapshot.data ?? 0;
+                return IconButton(
+                  onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ChatInboxPage())),
+                  icon: Badge(
+                    label: Text(count.toString()),
+                    isLabelVisible: count > 0,
+                    child: const Icon(Icons.chat_bubble_outline_rounded, color: Colors.white),
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                  tooltip: "Messages",
+                );
+              },
+            ),
+            const SizedBox(width: 12),
             IconButton(
               onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage())), 
-              icon: const Icon(Icons.notifications_none, color: Colors.white)
+              icon: StreamBuilder<int>(
+                stream: FirebaseAuth.instance.currentUser != null 
+                    ? NotificationService().getUnreadNotificationCount(FirebaseAuth.instance.currentUser!.uid) 
+                    : Stream.value(0),
+                builder: (context, snapshot) {
+                  final count = snapshot.data ?? 0;
+                  return Badge(
+                    label: Text(count.toString()),
+                    isLabelVisible: count > 0,
+                    child: const Icon(Icons.notifications_none, color: Colors.white),
+                  );
+                },
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
             ),
           ],
         ),
@@ -407,40 +603,49 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildSearchBar() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _searchController,
-            onChanged: (value) => setState(() => _searchQuery = value.toLowerCase().trim()),
-            decoration: InputDecoration(
-              hintText: "Search hostels...",
-              prefixIcon: const Icon(Icons.search, color: Colors.grey),
-              suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
-                _searchController.clear();
-                setState(() => _searchQuery = "");
-              }) : null,
-              filled: true,
-              fillColor: Theme.of(context).cardColor,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-              contentPadding: const EdgeInsets.symmetric(vertical: 0),
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 15,
+            offset: const Offset(0, 5),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value.toLowerCase().trim()),
+              decoration: InputDecoration(
+                hintText: "Search hostels or locations...",
+                hintStyle: TextStyle(color: Colors.grey[400]),
+                prefixIcon: Icon(Icons.search_rounded, color: Theme.of(context).primaryColor),
+                suffixIcon: _searchQuery.isNotEmpty ? IconButton(icon: const Icon(Icons.clear_rounded), onPressed: () {
+                  _searchController.clear();
+                  setState(() => _searchQuery = "");
+                }) : null,
+                border: InputBorder.none,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+              ),
             ),
           ),
-        ),
-        const SizedBox(width: 12),
-        // Filter Button
-        GestureDetector(
-          onTap: _showFilterModal,
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: Icon(Icons.tune, color: Theme.of(context).primaryColor),
+          Container(
+            height: 30,
+            width: 1,
+            color: Colors.grey.withOpacity(0.2),
           ),
-        ),
-      ],
+          IconButton(
+            onPressed: _showFilterModal,
+            icon: Icon(Icons.tune_rounded, color: Theme.of(context).primaryColor),
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+          ),
+        ],
+      ),
     );
   }
 
@@ -448,9 +653,11 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildFeaturedCarousel() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getFeaturedHostels(),
+      stream: _firestoreService.getFeaturedHostels(limit: 5),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData && _searchQuery.isEmpty) {
+          return const FeaturedSkeleton();
+        }
         final docs = snapshot.data?.docs ?? [];
         if (docs.isEmpty) return const SizedBox.shrink();
 
@@ -460,9 +667,9 @@ class _HomePageState extends State<HomePage> {
             height: 220, 
             enlargeCenterPage: true, 
             autoPlay: true,
-            viewportFraction: screenWidth > 900 ? 0.35 : 0.85, 
-          ),
-          items: docs.map((doc) => _buildFeaturedCard(doc.data() as Map<String, dynamic>..['id'] = doc.id)).toList(),
+                      viewportFraction: screenWidth > 900 ? 0.35 : 0.85, 
+                    ),
+                    items: docs.map((doc) => _buildFeaturedCard(doc.data() as Map<String, dynamic>..['id'] = doc.id)).toList(),
         );
       },
     );
@@ -474,18 +681,26 @@ class _HomePageState extends State<HomePage> {
       child: Container(
         margin: const EdgeInsets.only(bottom: 10),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(24),
           child: Stack(
             fit: StackFit.expand,
             children: [
               CachedNetworkImage(
-                imageUrl: _getSecureUrl(data['image']), 
+                imageUrl: ImageUtils.getSecureUrl(data['image']), 
                 fit: BoxFit.cover,
-                memCacheWidth: 1000,
+                memCacheWidth: 500,
                 placeholder: (c,u) => Container(color: Colors.grey[200]),
                 errorWidget: (c,u,e) => Container(color: Colors.grey[300], child: const Icon(Icons.broken_image)),
               ),
-              Container(decoration: const BoxDecoration(gradient: LinearGradient(colors: [Colors.transparent, Colors.black87], begin: Alignment.topCenter, end: Alignment.bottomCenter))),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.8)],
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.all(16.0),
                 child: Column(
@@ -493,13 +708,35 @@ class _HomePageState extends State<HomePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(color: Theme.of(context).primaryColor, borderRadius: BorderRadius.circular(8)),
-                      child: const Text("FEATURED", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor, 
+                        borderRadius: BorderRadius.circular(10),
+                        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 4)]
+                      ),
+                      child: const Text("FEATURED", style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                     ),
-                    const SizedBox(height: 8),
-                    Text(data['name'] ?? '', style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                    Text(data['location'] ?? '', style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                    const SizedBox(height: 10),
+                    Text(
+                      data['name'] ?? '', 
+                      style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: -0.5),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    Row(
+                      children: [
+                        Icon(Icons.location_on_rounded, color: Colors.white.withOpacity(0.7), size: 14),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            data['location'] ?? '', 
+                            style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -512,9 +749,19 @@ class _HomePageState extends State<HomePage> {
 
   Widget _buildHorizontalList() {
     return StreamBuilder<QuerySnapshot>(
-      stream: _firestoreService.getHostels(),
+      stream: _firestoreService.getTrendingHostels(limit: 8),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SizedBox(height: 200, child: Center(child: CircularProgressIndicator()));
+        if (!snapshot.hasData) {
+          return SizedBox(
+            height: 280,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: 4,
+              itemBuilder: (_, __) => const HostelSkeleton(),
+            ),
+          );
+        }
         var docs = snapshot.data?.docs ?? [];
         docs = docs.take(6).toList(); // Show 6 items for grid balance
 
@@ -540,7 +787,7 @@ class _HomePageState extends State<HomePage> {
 
              // Mobile: Horizontal List
              return SizedBox(
-                height: 310,
+                height: 255,
                 child: ListView.builder(
                   padding: const EdgeInsets.only(left: 20, right: 10),
                   scrollDirection: Axis.horizontal,
@@ -556,14 +803,21 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<QueryDocumentSnapshot<Object?>> _filterHostels(List<QueryDocumentSnapshot<Object?>> docs) {
+    if (_searchQuery.isEmpty && _priceRange == null && _filterAmenities.isEmpty && _selectedCategoryIndex == 0) {
+      return docs;
+    }
+
+    final category = _categories[_selectedCategoryIndex];
+    final searchQueryLower = _searchQuery.toLowerCase().trim();
+
     return docs.where((doc) {
       final data = doc.data() as Map<String, dynamic>;
       
       // 1. Search Filter
-      if (_searchQuery.isNotEmpty) {
+      if (searchQueryLower.isNotEmpty) {
         final name = (data['name'] as String? ?? '').toLowerCase();
         final location = (data['location'] as String? ?? '').toLowerCase();
-        if (!name.contains(_searchQuery) && !location.contains(_searchQuery)) {
+        if (!name.contains(searchQueryLower) && !location.contains(searchQueryLower)) {
            return false;
         }
       }
@@ -573,8 +827,11 @@ class _HomePageState extends State<HomePage> {
       if (_priceRange != null) {
         final rawPrice = data['price'];
         double price = 0.0;
-        if (rawPrice is num) price = rawPrice.toDouble();
-        if (rawPrice is String) price = double.tryParse(rawPrice.replaceAll(',', '')) ?? 0.0;
+        if (rawPrice is num) {
+          price = rawPrice.toDouble();
+        } else if (rawPrice is String) {
+          price = double.tryParse(rawPrice.replaceAll(',', '')) ?? 0.0;
+        }
         
         if (price < _priceRange!.start || price > _priceRange!.end) {
           return false;
@@ -583,54 +840,54 @@ class _HomePageState extends State<HomePage> {
 
       // Amenities
       if (_filterAmenities.isNotEmpty) {
-        final amenities = List<String>.from(data['amenities'] ?? []);
-        bool hasAll = true;
+        final amenities = (data['amenities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
         for (var filter in _filterAmenities) {
-          if (!amenities.contains(filter)) {
-            hasAll = false;
-            break;
-          }
+          if (!amenities.contains(filter)) return false;
         }
-        if (!hasAll) return false;
       }
 
       // 3. Category Filter
-      final category = _categories[_selectedCategoryIndex];
-      
       if (category == "All") return true;
 
       if (category == "My School 🎓") {
-        if (_userSchool == null) return true; // Show all if no school set (or handle empty) -> lets show all essentially acting like "All" but ideally we should prompt. For now, filter loose.
+        if (_userSchool == null) return true;
+        final school = (data['school'] as String? ?? '').toLowerCase();
+        if (school == _userSchool!.toLowerCase()) return true;
         
-        final school = data['school'] as String?;
-        if (school != null && school == _userSchool) return true;
-        
-        // Fallback: Check location string
         final loc = (data['location'] as String? ?? '').toLowerCase();
         return loc.contains(_userSchool!.toLowerCase());
       }
       
+      final categoryLower = category.toLowerCase();
       if (category == "UENR" || category == "CUG" || category == "UDS") {
-         final school = data['school'] as String?;
-         if (school == category) return true;
+         final school = (data['school'] as String? ?? '').toLowerCase();
+         if (school == categoryLower) return true;
          
-         // Fallback
          final loc = (data['location'] as String? ?? '').toLowerCase();
-         return loc.contains(category.toLowerCase());
+         return loc.contains(categoryLower);
       }
 
       if (category == "Luxury") {
         final rawPrice = data['price'];
         double price = 0.0;
         if (rawPrice is num) price = rawPrice.toDouble();
-        if (rawPrice is String) price = double.tryParse(rawPrice.replaceAll(',', '')) ?? 0.0;
-        final amenities = List<String>.from(data['amenities'] ?? []);
+        else if (rawPrice is String) price = double.tryParse(rawPrice.replaceAll(',', '')) ?? 0.0;
+        
+        final amenities = (data['amenities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
         bool hasPremium = amenities.contains('AC') && amenities.contains('Fridge');
         return price >= 5000 || hasPremium;
       }
+
+      if (category == "Affordable") {
+        final rawPrice = data['price'];
+        double price = 0.0;
+        if (rawPrice is num) price = rawPrice.toDouble();
+        else if (rawPrice is String) price = double.tryParse(rawPrice.replaceAll(',', '')) ?? 0.0;
+        return price < 3000;
+      }
       
-      // Removed "AC Rooms" explicit category check as it was dynamic, now generally checking amenities
-      return (data['amenities'] as List<dynamic>? ?? []).contains(category);
+      final amenities = (data['amenities'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [];
+      return amenities.contains(category);
     }).toList();
   }
 
@@ -644,7 +901,34 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildPopularCard(Map<String, dynamic> data) {
-    final bool isFull = (data['isFull'] ?? false) || (data['capacity'] ?? 0) == 0; 
+    final List<dynamic> rooms = data['rooms'] ?? [];
+    double minPrice = 0;
+    double maxPrice = 0;
+    int totalSlots = 0;
+    const double commission = 100.0;
+
+    if (rooms.isNotEmpty) {
+      final prices = rooms.map((r) => ((r['price'] as num? ?? 0).toDouble() * 1.10)).toList();
+      prices.sort();
+      minPrice = prices.first;
+      maxPrice = prices.last;
+      for (var r in rooms) {
+        totalSlots += (r['available'] as num? ?? 0).toInt();
+      }
+    } else {
+      final basePrice = (data['price'] is num) ? (data['price'] as num).toDouble() : (double.tryParse(data['price']?.toString() ?? '0') ?? 0.0);
+      minPrice = basePrice * 1.10;
+      maxPrice = minPrice;
+      
+      final rawCap = data['capacity'];
+      if (rawCap is num) {
+        totalSlots = rawCap.toInt();
+      } else {
+        totalSlots = int.tryParse(rawCap?.toString() ?? '0') ?? 0;
+      }
+    }
+
+    final bool isFull = (data['isFull'] ?? false) || totalSlots <= 0;
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return GestureDetector(
@@ -653,7 +937,6 @@ class _HomePageState extends State<HomePage> {
         decoration: BoxDecoration(
           color: Theme.of(context).cardColor, 
           borderRadius: BorderRadius.circular(16),
-          // ... (rest of decoration)
           boxShadow: [
              BoxShadow(
                color: isDark ? Colors.black26 : Colors.grey.withOpacity(0.1), 
@@ -665,13 +948,12 @@ class _HomePageState extends State<HomePage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Image section - Fixed height for stability
             ClipRRect(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(16)), 
               child: Stack(
                 children: [
                   CachedNetworkImage(
-                    imageUrl: _getSecureUrl(data['image']), 
+                    imageUrl: ImageUtils.getSecureUrl(data['image']), 
                     height: 150,
                     width: double.infinity,
                     fit: BoxFit.cover,
@@ -680,8 +962,6 @@ class _HomePageState extends State<HomePage> {
                     placeholder: (c,u) => Container(height: 150, color: Colors.grey[200]),
                     errorWidget: (c,u,e) => Container(height: 150, color: Colors.grey[200], child: const Icon(Icons.broken_image, color: Colors.grey)),
                   ),
-                  // ... (rest of stack children: Rating, Status, Price)
-                  // Rating pill
                   Positioned(
                     top: 6, left: 6,
                     child: Container(
@@ -700,7 +980,6 @@ class _HomePageState extends State<HomePage> {
                       ),
                     ),
                   ),
-                  // Status badge
                   if (isFull)
                     Positioned(
                       top: 6, right: 6,
@@ -710,7 +989,6 @@ class _HomePageState extends State<HomePage> {
                         child: const Text("FULL", style: TextStyle(color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold)),
                       ),
                     ),
-                  // Price tag
                   Positioned(
                     bottom: 6, right: 6,
                     child: Container(
@@ -720,7 +998,9 @@ class _HomePageState extends State<HomePage> {
                          borderRadius: BorderRadius.circular(8),
                        ),
                        child: Text(
-                        "GHS ${data['price'] ?? '0'}", 
+                        minPrice == maxPrice 
+                          ? "GHS ${minPrice.toStringAsFixed(0)}" 
+                          : "GHS ${minPrice.toStringAsFixed(0)}+", 
                         style: const TextStyle(fontWeight: FontWeight.w700, color: Colors.white, fontSize: 10),
                       ),
                     ),
@@ -729,41 +1009,44 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
             // Details section
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.all(10), 
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    // Name
-                    Text(
-                      data['name'] ?? '', 
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600, 
-                        fontSize: 13,
-                        color: Theme.of(context).textTheme.bodyLarge?.color,
-                      ), 
-                      maxLines: 2, 
-                      overflow: TextOverflow.ellipsis
-                    ),
-                    // Location
-                    Row(
-                      children: [
-                        Icon(Icons.location_on, size: 11, color: Theme.of(context).primaryColor),
-                        const SizedBox(width: 2),
-                        Expanded(
-                          child: Text(
-                            data['location'] ?? 'Unknown', 
-                            style: TextStyle(fontSize: 10, color: Colors.grey[600]), 
-                            maxLines: 1, 
-                            overflow: TextOverflow.ellipsis
-                          )
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 10, 8), 
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Name
+                  Text(
+                    data['name'] ?? '', 
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600, 
+                      fontSize: 12,
+                      color: Theme.of(context).textTheme.bodyLarge?.color,
+                    ), 
+                    maxLines: 1, 
+                    overflow: TextOverflow.ellipsis
+                  ),
+                  const SizedBox(height: 2),
+                  // Location
+                  Row(
+                    children: [
+                      Icon(Icons.location_on, size: 10, color: Theme.of(context).primaryColor),
+                      const SizedBox(width: 2),
+                      Expanded(
+                        child: Text(
+                          data['location'] ?? 'Unknown', 
+                          style: TextStyle(fontSize: 9, color: Colors.grey[600]), 
+                          maxLines: 1, 
+                          overflow: TextOverflow.ellipsis
                         )
-                      ]
-                    ),
-                  ],
-                ),
+                      ),
+                      Text(
+                        isFull ? "FULL" : "$totalSlots left",
+                        style: TextStyle(fontSize: 8, color: isFull ? Colors.red : Colors.green, fontWeight: FontWeight.bold),
+                      ),
+                    ]
+                  ),
+                ],
               ),
             ),
           ],
@@ -777,18 +1060,65 @@ class _CategoryList extends StatelessWidget {
   final List<String> categories;
   final int selectedIndex;
   final ValueChanged<int> onChanged;
+  final Map<String, String> schoolLogos;
 
   const _CategoryList({
     required this.categories,
     required this.selectedIndex,
     required this.onChanged,
+    required this.schoolLogos,
   });
+
+  Widget _buildCategoryIcon(BuildContext context, String category, bool isSelected) {
+    final iconColor = isSelected ? Colors.white : Theme.of(context).primaryColor;
+    
+    if (category == "All") return Icon(Icons.grid_view_rounded, size: 18, color: iconColor);
+    if (category == "My School 🎓") return Icon(Icons.school_rounded, size: 18, color: iconColor);
+    if (category == "Affordable") return Icon(Icons.sell_rounded, size: 18, color: iconColor);
+    if (category == "Luxury") return Icon(Icons.diamond_rounded, size: 18, color: iconColor);
+    
+    final logoUrl = SchoolUtils.getSchoolLogo(category, schoolLogos);
+    if (logoUrl != null && logoUrl.isNotEmpty) {
+      return Container(
+        width: 22,
+        height: 22,
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+        ),
+        padding: const EdgeInsets.all(2),
+        child: ClipOval(
+          child: SchoolLogo(
+            logoUrl: logoUrl,
+            size: 22,
+            fit: BoxFit.contain,
+          ),
+        ),
+      );
+    }
+    
+    return Container(
+      width: 22,
+      height: 22,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+      padding: const EdgeInsets.all(2),
+      child: ClipOval(
+        child: Image.asset('assets/logo/logo.png', width: 14, height: 14),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final sidePadding = 20.0;
+
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.only(left: 20),
+      padding: EdgeInsets.only(left: sidePadding),
       physics: const BouncingScrollPhysics(),
       child: Row(
         children: List.generate(categories.length, (index) {
@@ -799,22 +1129,29 @@ class _CategoryList extends StatelessWidget {
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeOut,
               margin: const EdgeInsets.only(right: 12),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
               decoration: BoxDecoration(
                 color: isSelected ? Theme.of(context).primaryColor : Theme.of(context).cardColor,
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: isSelected 
-                    ? [BoxShadow(color: Theme.of(context).primaryColor.withValues(alpha: 0.4), blurRadius: 10, offset: const Offset(0, 5))]
-                    : [BoxShadow(color: Colors.grey.withValues(alpha: 0.05), blurRadius: 5)],
-                border: isSelected ? null : Border.all(color: Colors.grey.withValues(alpha: 0.1)),
+                    ? [BoxShadow(color: Theme.of(context).primaryColor.withOpacity(0.4), blurRadius: 10, offset: const Offset(0, 5))]
+                    : [BoxShadow(color: Colors.grey.withOpacity(0.05), blurRadius: 5)],
+                border: isSelected ? null : Border.all(color: Colors.grey.withOpacity(0.1)),
               ),
-              child: Text(
-                categories[index], 
-                style: TextStyle(
-                  color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color?.withValues(alpha: 0.7), 
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.5
-                )
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildCategoryIcon(context, categories[index], isSelected),
+                  const SizedBox(width: 8),
+                  Text(
+                    categories[index], 
+                    style: TextStyle(
+                      color: isSelected ? Colors.white : Theme.of(context).textTheme.bodyMedium?.color?.withOpacity(0.8), 
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 0.3
+                    )
+                  ),
+                ],
               ),
             ),
           );
@@ -823,5 +1160,6 @@ class _CategoryList extends StatelessWidget {
     );
   }
 }
+
 
 

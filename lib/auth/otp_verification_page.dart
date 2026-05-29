@@ -99,17 +99,17 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
       height: 60,
       textStyle: const TextStyle(fontSize: 22, color: Colors.white, fontWeight: FontWeight.bold),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.1),
+        color: Colors.white.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
+        border: Border.all(color: Colors.white.withOpacity(0.1)),
       ),
     );
 
     final focusedPinTheme = defaultPinTheme.copyDecorationWith(
       border: Border.all(color: const Color(0xFF4FACFE), width: 1.5),
-      color: Colors.white.withValues(alpha: 0.15),
+      color: Colors.white.withOpacity(0.15),
       boxShadow: [
-        BoxShadow(color: const Color(0xFF4FACFE).withValues(alpha: 0.3), blurRadius: 12),
+        BoxShadow(color: const Color(0xFF4FACFE).withOpacity(0.3), blurRadius: 12),
       ]
     );
 
@@ -144,10 +144,10 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: Colors.white.withValues(alpha: 0.1),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+                    color: Colors.white.withOpacity(0.1),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                     boxShadow: [
-                      BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 20, offset: const Offset(0, 10))
+                      BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 20, offset: const Offset(0, 10))
                     ]
                   ),
                   child: const Icon(Icons.shield_rounded, size: 50, color: Colors.white),
@@ -158,10 +158,10 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                 Container(
                   padding: const EdgeInsets.all(30),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.08),
+                    color: Colors.white.withOpacity(0.08),
                     borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-                    boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.1), blurRadius: 30, offset: const Offset(0, 10))]
+                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 30, offset: const Offset(0, 10))]
                   ),
                   child: Column(
                     children: [
@@ -173,7 +173,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                       Text(
                         "Enter the 6-digit code sent to\n${widget.email}",
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white.withValues(alpha: 0.7), fontSize: 14, height: 1.5),
+                        style: TextStyle(color: Colors.white.withOpacity(0.7), fontSize: 14, height: 1.5),
                       ),
                       const SizedBox(height: 30),
 
@@ -229,7 +229,7 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
                         child: Text(
                           _canResend ? "Resend Code" : "Resend Code in 30s",
                           style: TextStyle(
-                            color: _canResend ? const Color(0xFF4FACFE) : Colors.white.withValues(alpha: 0.4),
+                            color: _canResend ? const Color(0xFF4FACFE) : Colors.white.withOpacity(0.4),
                             fontWeight: FontWeight.w600,
                           ),
                         ),
@@ -245,3 +245,4 @@ class _OtpVerificationPageState extends State<OtpVerificationPage> {
     ); 
   }
 }
+

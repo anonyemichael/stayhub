@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 Write-Host "--- Starting Deployment with Landing Page ---" -ForegroundColor Cyan
 
 # 1. Clean and Build Flutter App for /app/ subpath
-Write-Host "Building Flutter Web App..."
+Write-Host "Building Flutter Web App (Chrome-Grade Performance)..."
 flutter clean
 flutter build web --release --base-href "/app/"
 
@@ -37,8 +37,7 @@ Write-Host "Build directory prepared successfully."
 
 # 4. Deploy
 Write-Host "Deploying to Firebase..."
-firebase deploy --only hosting
-
+cmd.exe /c npx firebase-tools deploy --only hosting
 Write-Host "--- Deployment Complete ---" -ForegroundColor Green
 Write-Host "Landing Page: https://stayhubgh.com"
 Write-Host "Web App:      https://stayhubgh.com/app"

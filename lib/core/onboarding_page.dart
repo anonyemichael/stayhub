@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:stayhub/auth/auth_page.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:stayhub/core/image_utils.dart';
 
 class OnboardingPage extends StatefulWidget {
   const OnboardingPage({super.key});
@@ -16,21 +16,21 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   final List<OnboardingItem> _items = [
     OnboardingItem(
-      title: "Welcome to StayHub",
-      description: "Discover the best student hostels near your campus. Safe, affordable, and just a tap away.",
-      icon: FontAwesomeIcons.magnifyingGlassLocation,
+      title: "Discover Your Space",
+      description: "Browse the best student hostels near your campus. Safe, affordable, and vetted for you.",
+      imageUrl: "https://images.pexels.com/photos/276724/pexels-photo-276724.jpeg?auto=compress&cs=tinysrgb&w=1000",
       color: Colors.blueAccent,
     ),
     OnboardingItem(
       title: "Verified & Secure",
-      description: "We verify every listing to ensure your safety. Say goodbye to fake agents and scams.",
-      icon: FontAwesomeIcons.shieldHalved,
-      color: Colors.green,
+      description: "We verify every listing and agent to ensure your peace of mind. No scams, just homes.",
+      imageUrl: "https://images.pexels.com/photos/60504/security-protection-anti-virus-software-60504.jpeg?auto=compress&cs=tinysrgb&w=1000",
+      color: Colors.greenAccent,
     ),
     OnboardingItem(
-      title: "Book Instantly",
-      description: "Secure your room with our seamless payment system. Move in stress-free.",
-      icon: FontAwesomeIcons.creditCard,
+      title: "Seamless Booking",
+      description: "Secure your room instantly with our transparent and secure payment system.",
+      imageUrl: "https://images.pexels.com/photos/164501/pexels-photo-164501.jpeg?auto=compress&cs=tinysrgb&w=1000",
       color: Colors.purpleAccent,
     ),
   ];
@@ -48,86 +48,82 @@ class _OnboardingPageState extends State<OnboardingPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0F2027), // Deep dark
+      backgroundColor: const Color(0xFF0F2027),
       body: Stack(
         children: [
-          // 1. Dynamic Background (Gradient)
-          AnimatedContainer(
-            duration: const Duration(seconds: 1),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(0xFF0F2027),
-                  _items[_currentIndex].color.withOpacity(0.2), // Bleed item color into bg
-                  const Color(0xFF2C5364),
-                ],
-              ),
-            ),
-          ),
-          
-          // 2. Abstract Shapes (Orbs)
-          Positioned(
-            top: -100,
-            right: -100,
-            child: _buildOrb(_items[_currentIndex].color.withOpacity(0.3)),
-          ),
-          Positioned(
-            bottom: 100,
-            left: -50,
-            child: _buildOrb(Colors.white.withOpacity(0.05)),
-          ),
-
-          // 3. Content
+          // 1. Image Background with Cached Support
           PageView.builder(
             controller: _pageController,
             itemCount: _items.length,
             onPageChanged: (index) => setState(() => _currentIndex = index),
             itemBuilder: (context, index) {
               final item = _items[index];
-              return Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Icon with Glow
-                    Container(
-                      padding: const EdgeInsets.all(40),
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.white.withOpacity(0.05),
-                        border: Border.all(color: Colors.white.withOpacity(0.1)),
-                        boxShadow: [
-                           BoxShadow(color: item.color.withOpacity(0.4), blurRadius: 50, spreadRadius: 10)
+              return Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.network(
+                    ImageUtils.getSecureUrl(item.imageUrl),
+                    fit: BoxFit.cover,
+                    frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+                      if (wasSynchronouslyLoaded) return child;
+                      return AnimatedOpacity(
+                        opacity: frame == null ? 0 : 1,
+                        duration: const Duration(milliseconds: 500),
+                        curve: Curves.easeOut,
+                        child: child,
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      decoration: const BoxDecoration(
+                         gradient: LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF0F2027), Color(0xFF2C5364)])
+                      ),
+                      child: Center(child: Icon(Icons.broken_image_outlined, color: Colors.white.withOpacity(0.1), size: 100)),
+                    ),
+                  ),
+                  Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.3),
+                          const Color(0xFF0F2027).withOpacity(0.8),
+                          const Color(0xFF0F2027),
                         ],
                       ),
-                      child: FaIcon(item.icon, size: 70, color: Colors.white),
                     ),
-                    const SizedBox(height: 60),
-                    Text(
-                      item.title,
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                        letterSpacing: 1.0,
-                        height: 1.1,
-                      ),
-                      textAlign: TextAlign.center,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 32),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        Text(
+                          item.title,
+                          style: const TextStyle(
+                            fontSize: 36,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                            letterSpacing: -0.5,
+                            height: 1.1,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          item.description,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white.withOpacity(0.7),
+                            height: 1.6,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 180), // Space for bottom nav
+                      ],
                     ),
-                    const SizedBox(height: 20),
-                    Text(
-                      item.description,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.white.withOpacity(0.7),
-                        height: 1.6,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               );
             },
           ),
@@ -161,9 +157,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
                       FloatingActionButton(
                          onPressed: () {
                              if (_currentIndex == _items.length - 1) {
-                                _completeOnboarding();
+                                 _completeOnboarding();
                              } else {
-                                _pageController.nextPage(duration: const Duration(milliseconds: 600), curve: Curves.easeOutCubic);
+                                 _pageController.nextPage(duration: const Duration(milliseconds: 600), curve: Curves.easeOutCubic);
                              }
                          },
                          backgroundColor: Colors.white,
@@ -182,19 +178,6 @@ class _OnboardingPageState extends State<OnboardingPage> {
              child: TextButton(onPressed: _completeOnboarding, child: const Text("Skip", style: TextStyle(color: Colors.white70))),
           )
         ],
-      )
-    );
-  }
-
-  Widget _buildOrb(Color color) {
-    return AnimatedContainer(
-      duration: const Duration(seconds: 1),
-      width: 300,
-      height: 300,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: color, blurRadius: 100, spreadRadius: 10)],
       ),
     );
   }
@@ -203,13 +186,13 @@ class _OnboardingPageState extends State<OnboardingPage> {
 class OnboardingItem {
   final String title;
   final String description;
-  final IconData icon;
+  final String imageUrl;
   final Color color;
 
   OnboardingItem({
     required this.title,
     required this.description,
-    required this.icon,
+    required this.imageUrl,
     required this.color,
   });
 }

@@ -1,0 +1,1 @@
+Fix: Agents can now add and manage hostels without errors. Resolved payout setup issue blocking hostel uploads.
