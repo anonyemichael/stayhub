@@ -1,9 +1,11 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:stayhub/services/cloudinary_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:stayhub/core/image_utils.dart';
 
 class AgentAddRoomsPage extends StatefulWidget {
   final String hostelId;
@@ -39,6 +41,7 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
     final Map<String, dynamic>? existingRoom = isEditing ? _rooms[editIndex] : null;
 
     String selectedType = existingRoom?['type'] ?? '1-in-a-room';
+    String selectedPeriod = existingRoom?['paymentPeriod'] ?? 'semester';
     final priceCtrl = TextEditingController(text: existingRoom?['price']?.toString() ?? '');
     final qtyCtrl = TextEditingController(text: existingRoom?['quantity']?.toString() ?? '');
     List<String> selectedAmenities = List<String>.from(existingRoom?['amenities'] ?? []);
@@ -142,6 +145,25 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 20),
+
+                _buildFieldLabel("Payment Period"),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.white.withOpacity(0.05)
+                        : Colors.grey[100],
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  padding: const EdgeInsets.all(4),
+                  child: Row(
+                    children: [
+                      _buildPeriodOption('monthly', 'Monthly', Icons.calendar_view_day_rounded, selectedPeriod, setModalState, (v) => selectedPeriod = v),
+                      _buildPeriodOption('semester', 'Semester', Icons.calendar_view_month_rounded, selectedPeriod, setModalState, (v) => selectedPeriod = v),
+                      _buildPeriodOption('academic_year', 'Full Year', Icons.school_rounded, selectedPeriod, setModalState, (v) => selectedPeriod = v),
+                    ],
+                  ),
+                ),
                 const SizedBox(height: 24),
 
                 _buildFieldLabel("Room Amenities"),
@@ -196,6 +218,7 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
                         'type': selectedType,
                         'capacity': capacity,
                         'price': double.parse(priceCtrl.text),
+                        'paymentPeriod': selectedPeriod,
                         'quantity': int.parse(qtyCtrl.text),
                         'available': existingRoom?['available'] ?? int.parse(qtyCtrl.text),
                         'images': finalImageUrls,
@@ -255,9 +278,10 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
     setState(() => _isLoading = true);
 
     try {
-      double minPrice = _rooms.first['price'];
+      double minPrice = (_rooms.first['price'] as num).toDouble();
       for (var room in _rooms) {
-        if (room['price'] < minPrice) minPrice = room['price'];
+        final price = (room['price'] as num).toDouble();
+        if (price < minPrice) minPrice = price;
       }
 
       await FirebaseFirestore.instance.collection('hostels').doc(widget.hostelId).update({
@@ -367,7 +391,10 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
               children: [
                 Text(room['type'], style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
                 const SizedBox(height: 4),
-                Text("GHS ${room['price']}", style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 13)),
+                Text(
+                  "GHS ${room['price']} ${_periodLabel(room['paymentPeriod'])}",
+                  style: const TextStyle(color: Colors.green, fontWeight: FontWeight.w900, fontSize: 13),
+                ),
                 if (amenities.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Wrap(
@@ -405,7 +432,9 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         image: DecorationImage(
-          image: isUrl ? CachedNetworkImageProvider(path) : FileImage(File(path)) as ImageProvider,
+          image: isUrl 
+              ? CachedNetworkImageProvider(ImageUtils.getSecureUrl(path)) 
+              : (kIsWeb ? NetworkImage(path) : FileImage(File(path))) as ImageProvider,
           fit: BoxFit.cover,
         ),
       ),
@@ -454,6 +483,56 @@ class _AgentAddRoomsPageState extends State<AgentAddRoomsPage> {
       case 'balcony': return Icons.balcony_rounded;
       default: return Icons.check_circle_outline_rounded;
     }
+  }
+
+  String _periodLabel(String? period) {
+    switch (period) {
+      case 'monthly': return '/ month';
+      case 'semester': return '/ semester';
+      case 'academic_year': return '/ year';
+      default: return '/ semester';
+    }
+  }
+
+  Widget _buildPeriodOption(
+    String value,
+    String label,
+    IconData icon,
+    String selected,
+    StateSetter setModalState,
+    ValueChanged<String> onSelect,
+  ) {
+    final isSelected = selected == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setModalState(() => onSelect(value)),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 16, color: isSelected ? Colors.white : Colors.grey),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: isSelected ? Colors.white : Colors.grey,
+                  letterSpacing: 0.2,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildBottomAction(bool isDark) {

@@ -2,7 +2,7 @@ name: stayhub
 description: "Hostel booking & management app."
 publish_to: 'none'
 
-version: 1.0.0+115
+version: 1.0.1+127
 
 environment:
   sdk: ">=3.0.0 <4.0.0"
@@ -69,6 +69,7 @@ dependencies:
   shimmer: ^3.0.0
   email_otp: ^3.1.0
   pinput: ^6.0.1
+  in_app_review: ^2.0.9
   app_links: ^6.4.1
   audioplayers: ^6.5.1
   js: ^0.6.3
@@ -80,6 +81,7 @@ dependencies:
   connectivity_plus: ^7.0.0
   google_maps_flutter_android: ^2.19.8
   google_maps_flutter_platform_interface: ^2.15.0
+  record: ^6.2.0
 dev_dependencies:
   flutter_test:
     sdk: flutter

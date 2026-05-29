@@ -14,6 +14,7 @@ import 'package:stayhub/services/app_config_service.dart';
 import 'package:stayhub/features/agent/agent_add_rooms_page.dart';
 import 'package:stayhub/core/school_utils.dart';
 import 'package:stayhub/core/widgets/school_logo.dart';
+import 'package:stayhub/core/image_utils.dart';
 
 class AddHostelPage extends StatefulWidget {
   final String? hostelId;
@@ -260,29 +261,30 @@ class _AddHostelPageState extends State<AddHostelPage> {
         if (_ownerBankCode == null || _ownerAccountNumberCtrl.text.isEmpty) {
           throw "Owner bank details are required for agent listings.";
         }
-        
-        // Only create new one if details changed or missing
-        final bool detailsChanged = widget.initialData?['ownerAccountNumber'] != _ownerAccountNumberCtrl.text || 
+
+        // Only create new one if details changed or missing.
+        // Uses createOwnerSubaccount — does NOT touch the agent's own profile.
+        final bool detailsChanged = widget.initialData?['ownerAccountNumber'] != _ownerAccountNumberCtrl.text ||
                                     widget.initialData?['ownerBankCode'] != _ownerBankCode;
 
         if (ownerSubCode == null || detailsChanged) {
           try {
-            ownerSubCode = await _paymentService.createSubAccount(
+            final result = await _paymentService.createOwnerSubaccount(
               businessName: _ownerAccountNameCtrl.text.trim(),
               bankCode: _ownerBankCode!,
               accountNumber: _ownerAccountNumberCtrl.text.trim(),
-              percentage: "0", // Platform takes its share via transactionCharge logic
-              email: user.email ?? "owner@stayhub.app", // Fallback email
             );
+            ownerSubCode = result.subaccountCode;
           } catch (e) {
             throw "Payout Setup Failed: $e";
           }
         }
       } else if (_partnerType == 'owner') {
+        // Agent is the property owner — use their own subaccount from profile.
         ownerSubCode ??= _ownerSubCodeFromProfile;
-        if (ownerSubCode == null) {
-          throw "Please set up your Payout Account in your profile first before adding a hostel.";
-        }
+        // Allow hostel to be saved even without a subaccount; payments won't
+        // split until the agent sets up their payout account in their profile.
+        // A warning is shown via SnackBar after save if subaccount is missing.
       }
 
       final hostelData = {
@@ -318,7 +320,15 @@ class _AddHostelPageState extends State<AddHostelPage> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel Saved! Now add room prices."), backgroundColor: Colors.blue));
+        if (_partnerType == 'owner' && ownerSubCode == null) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text("Hostel saved! ⚠️ Set up your Payout Account in Profile to enable payments."),
+            backgroundColor: Colors.orange,
+            duration: Duration(seconds: 5),
+          ));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Hostel Saved! Now add room prices."), backgroundColor: Colors.blue));
+        }
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => AgentAddRoomsPage(hostelId: finalHostelId, initialRooms: widget.initialData?['rooms'])));
       }
     } catch (e) {
@@ -492,43 +502,7 @@ class _AddHostelPageState extends State<AddHostelPage> {
         
         if (_partnerType == 'agent') ...[
           const SizedBox(height: 40),
-          _buildSectionTitle("Owner Payout Setup", "Pick the owner's bank/MoMo for automated payouts."),
-          const SizedBox(height: 20),
-          
-          // Owner Bank Selection
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            decoration: BoxDecoration(
-              color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _ownerBankCode,
-                hint: Text("Select Owner's Bank", style: TextStyle(color: Colors.grey[500])),
-                isExpanded: true,
-                dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                items: _banks.map((bank) {
-                  return DropdownMenuItem<String>(
-                    value: bank['code'],
-                    child: Text(bank['name'], style: TextStyle(color: isDark ? Colors.white : Colors.black87)),
-                  );
-                }).toList(),
-                onChanged: (val) => setState(() => _ownerBankCode = val),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-          _buildModernField(_ownerAccountNumberCtrl, "Owner Account/MoMo Number", Icons.account_balance_wallet_rounded, isDark, isNumber: true),
-          const SizedBox(height: 16),
-          _buildModernField(_ownerAccountNameCtrl, "Owner Account Name (Business/Personal)", Icons.business_rounded, isDark),
-          const SizedBox(height: 8),
-          const Text(
-            "The base price will be sent here automatically. No manual transfers needed.",
-            style: TextStyle(fontSize: 10, color: Colors.blueAccent, fontWeight: FontWeight.bold),
-          ),
+          _buildOwnerPayoutSection(isDark, textColor),
         ],
       ],
     );
@@ -550,8 +524,8 @@ class _AddHostelPageState extends State<AddHostelPage> {
               image: (_coverImage != null || _existingCoverUrl != null) 
                   ? DecorationImage(
                       image: _coverImage != null 
-                          ? FileImage(File(_coverImage!.path)) 
-                          : CachedNetworkImageProvider(_existingCoverUrl!) as ImageProvider, 
+                          ? (kIsWeb ? NetworkImage(_coverImage!.path) : FileImage(File(_coverImage!.path))) as ImageProvider 
+                          : CachedNetworkImageProvider(ImageUtils.getSecureUrl(_existingCoverUrl!)) as ImageProvider, 
                       fit: BoxFit.cover
                     ) : null,
             ),
@@ -698,6 +672,237 @@ class _AddHostelPageState extends State<AddHostelPage> {
   }
 
   Widget _buildGalleryPreview(String path, bool isExisting, int index) {
-    return Stack(children: [Container(decoration: BoxDecoration(borderRadius: BorderRadius.circular(18), image: DecorationImage(image: isExisting ? CachedNetworkImageProvider(path) : FileImage(File(path)) as ImageProvider, fit: BoxFit.cover))), Positioned(top: 4, right: 4, child: GestureDetector(onTap: () => isExisting ? _removeExistingGalleryImage(index) : _removeGalleryImage(index), child: const CircleAvatar(radius: 12, backgroundColor: Colors.red, child: Icon(Icons.close, size: 14, color: Colors.white))))]);
+    return Stack(
+      children: [
+        Container(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(18),
+            image: DecorationImage(
+              image: isExisting 
+                  ? CachedNetworkImageProvider(ImageUtils.getSecureUrl(path)) 
+                  : (kIsWeb ? NetworkImage(path) : FileImage(File(path))) as ImageProvider,
+              fit: BoxFit.cover,
+            ),
+          ),
+        ),
+        Positioned(
+          top: 4, right: 4,
+          child: GestureDetector(
+            onTap: () => isExisting ? _removeExistingGalleryImage(index) : _removeGalleryImage(index),
+            child: const CircleAvatar(
+              radius: 12,
+              backgroundColor: Colors.red,
+              child: Icon(Icons.close, size: 14, color: Colors.white),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildOwnerPayoutSection(bool isDark, Color textColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: isDark ? Colors.white10 : const Color(0xFF2563EB).withOpacity(0.18),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF2563EB).withOpacity(0.07),
+            blurRadius: 24,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // ── Header ──────────────────────────────────────────────
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF1E40AF), Color(0xFF3B82F6)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.account_balance_rounded, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Owner Payout Setup",
+                        style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w900),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        "Owner receives 100% of base price — automatically.",
+                        style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.w500),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // ── Form ────────────────────────────────────────────────
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                // Bank dropdown
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: _ownerBankCode != null
+                          ? const Color(0xFF2563EB).withOpacity(0.5)
+                          : (isDark ? Colors.white10 : Colors.grey[200]!),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                      value: _ownerBankCode,
+                      hint: Row(
+                        children: [
+                          Icon(Icons.account_balance_rounded, color: Colors.grey[400], size: 18),
+                          const SizedBox(width: 10),
+                          Text("Select Owner's Bank", style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                        ],
+                      ),
+                      isExpanded: true,
+                      icon: const Icon(Icons.keyboard_arrow_down_rounded, color: Color(0xFF2563EB)),
+                      dropdownColor: isDark ? const Color(0xFF1E293B) : Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      items: _banks.map((bank) {
+                        return DropdownMenuItem<String>(
+                          value: bank['code'],
+                          child: Text(
+                            bank['name'],
+                            style: TextStyle(
+                              color: isDark ? Colors.white : Colors.black87,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) => setState(() => _ownerBankCode = val),
+                    ),
+                  ),
+                ),
+
+                if (_ownerBankCode != null) ...[
+                  const SizedBox(height: 4),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.check_circle_rounded, color: Colors.green, size: 13),
+                        const SizedBox(width: 4),
+                        Text("Bank selected", style: TextStyle(color: Colors.green[600], fontSize: 11, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+                _buildPayoutField(
+                  _ownerAccountNumberCtrl,
+                  "Account / MoMo Number",
+                  Icons.dialpad_rounded,
+                  isDark,
+                  isNumber: true,
+                ),
+                const SizedBox(height: 16),
+                _buildPayoutField(
+                  _ownerAccountNameCtrl,
+                  "Account Name (Business / Personal)",
+                  Icons.person_outline_rounded,
+                  isDark,
+                ),
+                const SizedBox(height: 18),
+
+                // Info Banner
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2563EB).withOpacity(0.07),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_rounded, color: Color(0xFF2563EB), size: 18),
+                      const SizedBox(width: 10),
+                      const Expanded(
+                        child: Text(
+                          "Base price auto-transferred after checkout. No manual transfers needed.",
+                          style: TextStyle(color: Color(0xFF2563EB), fontSize: 12, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPayoutField(
+    TextEditingController controller,
+    String label,
+    IconData icon,
+    bool isDark, {
+    bool isNumber = false,
+  }) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: isNumber ? TextInputType.number : TextInputType.text,
+      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: const Color(0xFF2563EB), size: 20),
+        filled: true,
+        fillColor: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[50],
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!, width: 1.5),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: isDark ? Colors.white10 : Colors.grey[200]!, width: 1.5),
+        ),
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.all(Radius.circular(14)),
+          borderSide: BorderSide(color: Color(0xFF2563EB), width: 2),
+        ),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+      ),
+    );
   }
 }
